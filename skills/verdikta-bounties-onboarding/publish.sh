@@ -26,7 +26,7 @@ set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
 STAGE_DIR="${SKILL_DIR}/.clawhub-stage"
-VERSION="${VERSION:-1.4.3}"
+VERSION="${VERSION:-1.5.0}"
 DRY_RUN=""
 
 if [[ "${1:-}" == "--dry-run" ]]; then
@@ -34,16 +34,18 @@ if [[ "${1:-}" == "--dry-run" ]]; then
 fi
 
 rm -rf "$STAGE_DIR"
-mkdir -p "$STAGE_DIR/scripts" "$STAGE_DIR/references"
+mkdir -p "$STAGE_DIR/scripts" "$STAGE_DIR/references" "$STAGE_DIR/examples"
 
 cp "$SKILL_DIR/SKILL.md" "$STAGE_DIR/"
 cp "$SKILL_DIR/README.md" "$STAGE_DIR/"
 cp "$SKILL_DIR/_meta.json" "$STAGE_DIR/"
 
 # Scripts: source files + package.json + .env.example only
-for f in "$SKILL_DIR"/scripts/*.js "$SKILL_DIR"/scripts/package.json "$SKILL_DIR"/scripts/.env.example; do
+for f in "$SKILL_DIR"/scripts/*.js "$SKILL_DIR"/scripts/*.cjs "$SKILL_DIR"/scripts/bounty-escrow.abi.json "$SKILL_DIR"/scripts/deployments.json "$SKILL_DIR"/scripts/package-lock.json "$SKILL_DIR"/scripts/package.json "$SKILL_DIR"/scripts/.env.example; do
   [ -f "$f" ] && cp "$f" "$STAGE_DIR/scripts/"
 done
+
+cp "$SKILL_DIR"/examples/*.json "$STAGE_DIR/examples/"
 
 # Reference docs
 cp "$SKILL_DIR"/references/*.md "$STAGE_DIR/references/"

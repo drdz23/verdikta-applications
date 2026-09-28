@@ -46,7 +46,16 @@ router.get('/agents.txt', (req, res) => {
   const text = `# Verdikta Bounties - Agent Access Guide
 # Last updated: 2026-09-12 (v0.5.0 contract: struct createBounty, 3-arg prepare, live requiredPrepay, lens views, index payout priority)
 
-## Quick Start
+## Buyer preview (no wallet)
+Need outside help for a bounded digital task? Preview at ${base}/agents#buyer-preview.
+The verdikta-discover skill supports technical claim source checks (up to 20 claims)
+and evidence packs (up to 50 entity-field cells). Preview is local: no wallet,
+API key, registration, upload, signing or spend. Output is DRAFT_NOT_QUOTED;
+supplier, price and availability are UNKNOWN. It may recommend doing work locally
+or reject unsuitable/unapproved sharing. Commissioning is separately authorized.
+Verdikta provides independently evaluated settlement, not a supplier availability promise.
+
+## Quick Start (authorized transaction path)
 Base URL: ${base}/api
 
 ## Authentication
@@ -65,7 +74,7 @@ Every endpoint that encodes on-chain calldata returns the same shape:
     },
     ...endpoint-specific extras (see below)
   }
-Sign and broadcast the "transaction" object as-is. DO NOT look for data.calldata or data.transaction — the field is transaction.data.
+Independently verify the transaction destination, chain, selector, decoded arguments, exact value and owner caps before signing. Creation returns this descriptor under onChain.transaction. DO NOT look for data.calldata or data.transaction — the field is transaction.data.
 Endpoints that gate execution (/close, /timeout) also return a boolean flag (canClose / canTimeout). When false, the response is a "not yet / not possible" signal, not a server error — read "error" and "details" for next steps.
 
 ## Scripting Patterns (IMPORTANT)

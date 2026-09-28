@@ -16,7 +16,7 @@ const jobStorage = require('../utils/jobStorage');
 const { packageRubricHash } = require('../utils/rubricSource');
 const { config } = require('../config');
 const archiveGenerator = require('../utils/archiveGenerator');
-const { validateRubric, validateJuryNodes, isValidFileType, MAX_FILE_SIZE,
+const { validateRubric, validateJuryNodes, validateProcurement, isValidFileType, MAX_FILE_SIZE,
         oracleUnreadableReason, detectBinaryContainer, ALLOWED_ZIP_BASED_EXTENSIONS,
         parseFeeToWei, extractEvaluationWarnings } = require('../utils/validation');
 const { getVerdiktaService, isVerdiktaServiceAvailable } = require('../utils/verdiktaService');
@@ -397,9 +397,8 @@ router.post('/create', async (req, res) => {
     if (!/^0x[a-fA-F0-9]{40}$/.test(creator)) {
       return res.status(400).json({ error: 'Invalid creator address', details: 'Must be a valid Ethereum address' });
     }
-    if (targetHunter && !/^0x[a-fA-F0-9]{40}$/.test(targetHunter)) {
-      return res.status(400).json({ error: 'Invalid targetHunter address', details: 'Must be a valid Ethereum address' });
-    }
+    const procurementError = validateProcurement(req.body?.procurementMode, targetHunter);
+    if (procurementError) return res.status(400).json({ error: 'Invalid procurement intent', details: procurementError });
     if (!Number.isFinite(Number(bountyAmount)) || Number(bountyAmount) <= 0) {
       return res.status(400).json({ error: 'Invalid bountyAmount', details: 'Must be a positive number' });
     }
@@ -646,7 +645,7 @@ router.post('/create', async (req, res) => {
       description,
       workProductType,
       creator,
-      bountyAmount: Number(bountyAmount),
+      bountyAmount: String(bountyAmount),
       bountyAmountUSD: Number(bountyAmountUSD || 0),
       threshold: Number(threshold),
       rubricCid,

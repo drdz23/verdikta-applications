@@ -96,6 +96,7 @@ function isValidFileSize(size) {
  */
 function validateRubric(rubric) {
   const errors = [];
+  if (!rubric || typeof rubric !== "object") return { valid: false, errors: ["Rubric must be an object"] };
 
   // Note: Threshold is no longer part of the rubric sent to AI nodes
   // It's stored separately and used by the smart contract for pass/fail decisions
@@ -114,6 +115,7 @@ function validateRubric(rubric) {
     let totalWeight = 0;
     const ids = new Set();
     rubric.criteria.forEach((criterion, index) => {
+      if (!criterion || typeof criterion !== "object") { errors.push(`Criterion ${index}: invalid object`); return; }
       const cLabel = criterion.label || criterion.id || 'unknown';
       const cPrefix = `Criterion ${index} ("${cLabel}")`;
 
@@ -130,7 +132,7 @@ function validateRubric(rubric) {
         errors.push(`${cPrefix}: Missing or invalid 'must' field (must be boolean)`);
       }
 
-      if (typeof criterion.weight !== 'number') {
+      if (typeof criterion.weight !== 'number' || !Number.isFinite(criterion.weight)) {
         errors.push(`${cPrefix}: Missing or invalid weight (must be number)`);
       } else if (criterion.weight < 0 || criterion.weight > 1) {
         errors.push(`${cPrefix}: Weight must be between 0 and 1`);
@@ -403,7 +405,18 @@ function extractEvaluationWarnings(content) {
   return [...new Set(out)];
 }
 
+// Optional explicit procurement intent; legacy callers without a mode keep their
+// existing open/targeted behavior, but a declared TARGETED request never opens.
+function validateProcurement(mode, target) {
+  if (mode != null && !['OPEN', 'TARGETED'].includes(mode)) return 'procurementMode must be OPEN or TARGETED';
+  if (target != null && target !== '' && !ethers.isAddress(target)) return 'Invalid targetHunter address';
+  if (mode === 'TARGETED' && (!target || target.toLowerCase() === ethers.ZeroAddress)) return 'TARGETED requires a nonzero targetHunter';
+  if (mode === 'OPEN' && target && target.toLowerCase() !== ethers.ZeroAddress) return 'OPEN cannot name a targetHunter';
+  return null;
+}
+
 module.exports = {
+  validateProcurement,
   isValidCid,
   extractEvaluationWarnings,
   isValidFileType,

@@ -1,3 +1,4 @@
+import { rubricWeights } from '../utils/rubricWeights';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -140,20 +141,7 @@ function CreateBounty({ walletState }) {
   const hasAtLeastOneCriterion = () =>
     Array.isArray(rubric.criteria) && rubric.criteria.length > 0;
 
-  const validateWeights = () => {
-    const scoredCriteria = (rubric.criteria || []).filter((c) => !c.must);
-    const totalWeight = scoredCriteria.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
-    return {
-      valid: Math.abs(totalWeight - 1.0) < 0.01,
-      totalWeight,
-      message:
-        totalWeight < 0.99
-          ? `Weights sum to ${totalWeight.toFixed(2)} (should be 1.00)`
-          : totalWeight > 1.01
-          ? `Weights sum to ${totalWeight.toFixed(2)} (should be 1.00)`
-          : 'Valid',
-    };
-  };
+  const validateWeights = () => rubricWeights(rubric.criteria);
 
   const validateJuryWeights = () => {
     const totalWeight = juryNodes.reduce((sum, node) => sum + (Number(node.weight) || 0), 0);

@@ -1,0 +1,91 @@
+{
+  "observations": [
+    {
+      "network": "mainnet",
+      "chainId": 8453,
+      "address": "0xA741eFf41Bcf14793E61CEbB4179E05C9124D3f6",
+      "bountyCount": "103",
+      "lens": "0x25a11f859A13ffc413c0E6b0088e5690e1c0B235",
+      "observedAt": "2026-09-28T19:10:53.761Z",
+      "readBountyId": "102",
+      "targetHunter": "0x0000000000000000000000000000000000000000",
+      "requiredPrepayWei": "240000000000000",
+      "effectiveOracleParams": [
+        "20000000000000",
+        "500",
+        "10000000000000",
+        "3"
+      ],
+      "submissionCount": "4",
+      "submissionTupleFields": 12,
+      "nextAction": "DONE",
+      "/api/classes": {
+        "status": 401
+      },
+      "/api/classes/128/models": {
+        "status": 401
+      },
+      "docsSha256": "2ffdd431c214b73019bec5c391f300e0288815e95b4ab330e7d7eda7187a9d2d",
+      "docsHTTPStatus": 200
+    },
+    {
+      "network": "testnet",
+      "chainId": 84532,
+      "address": "0x1B4F0e43256d435DfcD5C0883799F0Eb3943e08f",
+      "bountyCount": "5",
+      "lens": "0xB8405061dE5E00120E28f7B2Bcf6109e9564B4d5",
+      "observedAt": "2026-09-28T19:11:02.129Z",
+      "readBountyId": "4",
+      "targetHunter": "0x0000000000000000000000000000000000000000",
+      "requiredPrepayWei": "240000000000000",
+      "effectiveOracleParams": [
+        "20000000000000",
+        "500",
+        "10000000000000",
+        "3"
+      ],
+      "submissionCount": "0",
+      "/api/classes": {
+        "status": 401
+      },
+      "/api/classes/128/models": {
+        "status": 401
+      },
+      "docsSha256": "ed6e493dd993fad3f4b94fa5e57854dab5cb85947e6c78dc65d31357c0b90901",
+      "docsHTTPStatus": 200
+    }
+  ],
+  "deploymentSnapshots": {
+    "base": {
+      "chainId": 8453,
+      "address": "0xA741eFf41Bcf14793E61CEbB4179E05C9124D3f6",
+      "codeHash": "0x37511060fbbd00c75212ac5b433c81cfce7531627809b32908bbc2f7ba2d0da3",
+      "observedAt": "2026-09-28T18:58:42.752Z",
+      "docsUrl": "https://bounties.verdikta.org/api/docs"
+    },
+    "base-sepolia": {
+      "chainId": 84532,
+      "address": "0x1B4F0e43256d435DfcD5C0883799F0Eb3943e08f",
+      "codeHash": "0xc604dbb65559e4bebe2d8dfaa9b3ef4501059e7d83d828d677673f3e13641fb8",
+      "observedAt": "2026-09-28T18:58:42.828Z",
+      "docsUrl": "https://bounties-testnet.verdikta.org/api/docs"
+    }
+  },
+  "sourceBytecodeComparison": [
+    {
+      "network": "base",
+      "compiledRuntimeMatchesIgnoringImmutablesAndMetadata": true
+    },
+    {
+      "network": "base-sepolia",
+      "compiledRuntimeMatchesIgnoringImmutablesAndMetadata": true
+    }
+  ],
+  "agentsTxt": {
+    "url": "https://bounties.verdikta.org/agents.txt",
+    "HTTPStatus": 200,
+    "sha256": "3a9edbc2f3deac535e247890b9dc5df4ff5b77e9b91bc0eab7b2a8ec254d9db4"
+  },
+  "rpcLimitations": "Default Base RPC returned -32016 over rate limit; read-only calls succeeded using base-rpc.publicnode.com and base-sepolia-rpc.publicnode.com. No guards bypassed or transactions submitted.",
+  "classAvailability": "Both class endpoints returned HTTP 401 without API credentials; availability was not verified."
+}

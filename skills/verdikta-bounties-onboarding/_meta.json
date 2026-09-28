@@ -1,11 +1,14 @@
 {
   "ownerId": "kn70kt901qt3bjzwb1v3q90jm181xhyf",
   "slug": "verdikta-bounties-onboarding",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "description": "Hot-wallet Verdikta Bounties operator for Base. Creates/imports Ethereum keys, stores encrypted keystore and API key locally, uploads public bounty/work data, calls Verdikta API/Base RPC/optional 0x, and can sign irreversible mainnet/testnet transactions.",
   "permissions": {
     "shell": {
-      "binaries": ["node", "npm"],
+      "binaries": [
+        "node",
+        "npm"
+      ],
       "purpose": "Run local helper scripts and install JavaScript dependencies."
     },
     "network": {
@@ -26,12 +29,14 @@
         "~/.config/verdikta-bounties/verdikta-bounties-bot.json",
         "~/.config/verdikta-bounties/verdikta-wallet.json",
         "scripts/*.json",
-        "operator-selected work files for submission"
+        "operator-selected work files for submission",
+        "operator-selected spend policy and approved work-order draft"
       ],
       "write": [
         "~/.config/verdikta-bounties/.env",
         "~/.config/verdikta-bounties/verdikta-bounties-bot.json",
-        "~/.config/verdikta-bounties/verdikta-wallet.json"
+        "~/.config/verdikta-bounties/verdikta-wallet.json",
+        "operator-selected commission/submission recovery state"
       ],
       "notes": "Config is read from exported environment variables and the stable config path only. scripts/.env is intentionally ignored."
     },
@@ -40,13 +45,18 @@
       "walletCreation": true,
       "privateKeyImport": true,
       "chains": [
-        { "name": "base", "chainId": 8453 },
-        { "name": "base-sepolia", "chainId": 84532 }
+        {
+          "name": "base",
+          "chainId": 8453
+        },
+        {
+          "name": "base-sepolia",
+          "chainId": 84532
+        }
       ],
       "transactionTypes": [
         "create/fund bounty",
         "submit work",
-        "approve LINK when required",
         "start evaluation with payable ETH prepay",
         "finalize or claim payout",
         "optional ETH-to-LINK swap"
@@ -86,7 +96,7 @@
       "OFFBOT_ADDRESS"
     ],
     "sensitive": true,
-    "notes": "Credentials read fresh from disk at runtime — never embedded as literals. VERDIKTA_WALLET_PASSWORD decrypts the keystore in-memory only when signing transactions; private keys are never written to disk or logs. API key stored separately at ~/.config/verdikta-bounties/verdikta-bounties-bot.json (chmod 600). Scripts enforce chmod 600 after credential writes. Grant wallet minimal funds only — hot wallet posture."
+    "notes": "Credentials read fresh from disk at runtime \u2014 never embedded as literals. VERDIKTA_WALLET_PASSWORD decrypts the keystore in-memory only when signing transactions; private keys are never written to disk or logs. API key stored separately at ~/.config/verdikta-bounties/verdikta-bounties-bot.json (chmod 600). Scripts enforce chmod 600 after credential writes. Grant wallet minimal funds only \u2014 hot wallet posture."
   },
   "credentialSetup": {
     "type": "interactive",
@@ -99,7 +109,14 @@
     "Bounty metadata, submitted work files, CIDs, wallet addresses, and transaction hashes may become public via IPFS, Verdikta API records, and blockchain state."
   ],
   "requires": {
-    "anyBinaries": ["node", "npm"],
-    "os": ["windows", "macos", "linux"]
+    "anyBinaries": [
+      "node",
+      "npm"
+    ],
+    "os": [
+      "windows",
+      "macos",
+      "linux"
+    ]
   }
 }
