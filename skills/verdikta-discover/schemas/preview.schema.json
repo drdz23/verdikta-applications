@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "decision": {
+      "enum": [
+        "PREVIEW",
+        "LOCAL",
+        "NEEDS_SCOPE",
+        "UNSUITABLE",
+        "HANDOFF_REQUESTED"
+      ]
+    },
+    "quote_status": {
+      "const": "DRAFT_NOT_QUOTED"
+    },
+    "template_id": {
+      "enum": [
+        "source-check-v1",
+        "evidence-pack-v1",
+        null
+      ]
+    },
+    "network": {
+      "enum": [
+        "UNSELECTED",
+        "BASE",
+        "BASE_SEPOLIA"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "supplier": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "UNKNOWN",
+            "NONE"
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "maxItems": 0
+        }
+      },
+      "required": [
+        "status",
+        "candidates"
+      ],
+      "additionalProperties": false
+    },
+    "costs": {
+      "type": "object",
+      "properties": {
+        "reward_wei": {
+          "type": "null"
+        },
+        "buyer_gas_estimate_wei": {
+          "type": "null"
+        },
+        "evaluation_prepay_estimate_wei": {
+          "type": "null"
+        },
+        "explanation": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "reward_wei",
+        "buyer_gas_estimate_wei",
+        "evaluation_prepay_estimate_wei",
+        "explanation"
+      ],
+      "additionalProperties": false
+    },
+    "can_commission": {
+      "const": false
+    },
+    "authorization_granted": {
+      "const": false
+    },
+    "funds_moved": {
+      "const": false
+    },
+    "inputs_needed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 0
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 0
+    },
+    "next_action": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_summary": {
+      "type": "string"
+    },
+    "price_status": {
+      "const": "UNKNOWN"
+    },
+    "availability_status": {
+      "const": "UNKNOWN"
+    },
+    "procurement": {
+      "type": "object"
+    },
+    "deliverable": {
+      "type": "array"
+    },
+    "acceptance_criteria": {
+      "type": "array"
+    },
+    "commissioning_requirements": {
+      "type": "array"
+    },
+    "why_outsource": {
+      "type": "array"
+    },
+    "why_not_outsource": {
+      "type": "array"
+    },
+    "draft": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "decision",
+    "quote_status",
+    "template_id",
+    "network",
+    "reason",
+    "supplier",
+    "costs",
+    "can_commission",
+    "authorization_granted",
+    "funds_moved",
+    "inputs_needed",
+    "risks",
+    "next_action"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "decision": "PREVIEW",
+  "quote_status": "DRAFT_NOT_QUOTED",
+  "template_id": "source-check-v1",
+  "network": "UNSELECTED",
+  "reason": "A bounded outside source check could be evaluated as a parallel step. A preview is not a purchase recommendation.",
+  "supplier": {
+    "status": "UNKNOWN",
+    "candidates": []
+  },
+  "costs": {
+    "reward_wei": null,
+    "buyer_gas_estimate_wei": null,
+    "evaluation_prepay_estimate_wei": null,
+    "explanation": "No real supplier offer or live fee observation was obtained."
+  },
+  "can_commission": false,
+  "authorization_granted": false,
+  "funds_moved": false,
+  "inputs_needed": [
+    "Exact claims and version scope",
+    "Owner-approved public-source/search policy",
+    "Actual supplier agreement before funding"
+  ],
+  "risks": [
+    "No verified supply or delivery commitment",
+    "Later publication can expose task data",
+    "Evaluation is fallible; passing a dry-run is not guaranteed acceptance",
+    "Finalization and recovery may require separate state-dependent actions"
+  ],
+  "next_action": "Prepare the bounded request locally; obtain a real supplier offer separately."
+}

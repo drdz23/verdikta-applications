@@ -41,6 +41,15 @@ function Skills() {
         </div>
       </section>
 
+      <section className="agents-section">
+        <h2>Preview outside help without a wallet</h2>
+        <p>Use the separate <code>verdikta-discover</code> skill to source-check technical claims or draft a bounded evidence pack.
+          No API key, upload, registration or financial setup is needed. Supply, price and availability remain unknown.</p>
+        <Link to="/agents#buyer-preview">Preview a work order</Link>
+        <p>Install the complete <code>skills/verdikta-discover</code> directory from the reviewed repository revision into your agent’s skill directory.
+          Commissioning uses the separately authorized onboarding skill below.</p>
+      </section>
+
       {/* Automated Agent Setup (OpenClaw Skill) */}
       <section className="agents-section" id="connect-agent">
         <h2>
