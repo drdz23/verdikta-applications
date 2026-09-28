@@ -392,8 +392,10 @@ Step 1 — GET /api/jobs/:id/public-submissions/sign-payload?value=true|false
   }
 
 Step 2 — sign \`message\` verbatim with the creator wallet, then PATCH:
-  ethers (Node):
+  ethers (Node, EOA creator):
     const sig = await creatorWallet.signMessage(message);
+  viem (smart-wallet creator, e.g. a CDP / Coinbase Smart Wallet agent account):
+    const sig = await smartAccount.signMessage({ message });
   curl:
     curl -X PATCH "$BASE/api/jobs/148/public-submissions" \\
       -H "X-Bot-API-Key: $KEY" \\
@@ -403,7 +405,15 @@ Step 2 — sign \`message\` verbatim with the creator wallet, then PATCH:
 Rules:
 - The signature is valid for 5 minutes from \`Timestamp\`. After that, request
   a fresh sign-payload — do not reuse old ones.
-- The recovered signer must equal the bounty's on-chain creator. Mismatch → 401.
+- The signature must be the bounty's on-chain creator's. Two kinds are accepted:
+    * EOA: personal_sign / signer.signMessage — the recovered signer must
+      equal the creator address.
+    * Smart-contract wallet (Coinbase Smart Wallet, Base Account, agent CDP
+      smart accounts): an EIP-1271 signature — the server calls
+      creator.isValidSignature(hashMessage(message), signature) on-chain and
+      accepts only the magic value. Sign with the smart account itself, not
+      with its underlying owner key.
+  Either way, a mismatch, a revert, or a non-magic return → 401.
 - "publicSubmissions" in the body must match the "Public:" line in the signed
   message. Mismatch → 400.
 - Toggling is idempotent and may be done as often as you like — set false to
@@ -778,7 +788,7 @@ router.get('/api/docs', (req, res) => {
       {
         method: 'GET',
         path: '/jobs/:id/public-submissions/sign-payload',
-        description: 'Build the canonical signed-message text needed to toggle the publicSubmissions flag. Returns the exact string the bounty creator must sign with their wallet (ethers signer.signMessage / personal_sign), then submit via PATCH /jobs/:id/public-submissions.',
+        description: 'Build the canonical signed-message text needed to toggle the publicSubmissions flag. Returns the exact string the bounty creator must sign with their wallet (EOA: ethers signer.signMessage / personal_sign; smart wallet: the smart account\'s signMessage, verified via EIP-1271), then submit via PATCH /jobs/:id/public-submissions.',
         params: [
           'value=true|false (required) — the new flag value to authorize'
         ],
@@ -792,7 +802,7 @@ router.get('/api/docs', (req, res) => {
         fields: [
           'publicSubmissions: boolean (required) — must equal the value embedded in the signed message',
           'message: string (required) — the canonical signed text. Get it from GET /jobs/:id/public-submissions/sign-payload?value=true|false to avoid hand-building it.',
-          'signature: string (required) — 0x-prefixed hex from signer.signMessage(message). The recovered signer must equal job.creator. 5-min validity window.'
+          'signature: string (required) — 0x-prefixed hex. Either an EOA personal_sign signature (signer.signMessage(message); recovered signer must equal job.creator) or an EIP-1271 smart-wallet signature (Coinbase Smart Wallet / Base Account / CDP smart account; the server calls job.creator.isValidSignature(hashMessage(message), signature) and accepts only the magic value). 5-min validity window.'
         ],
         returns: '{ success: true, job: { jobId, publicSubmissions } } on success. 401 if signature does not match creator; 400 if body fields disagree with signed message or timestamp expired.',
         signedMessageFormat: [

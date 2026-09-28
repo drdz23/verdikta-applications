@@ -5369,7 +5369,8 @@ router.post('/:jobId/submit/bundle/complete', async (req, res) => {
 /* ===============================
    GET publicSubmissions sign-payload helper
    Returns the canonical message string that the bounty creator must sign
-   (via personal_sign / ethers signer.signMessage) to toggle the flag.
+   (via personal_sign / ethers signer.signMessage, or a smart account's
+   signMessage for EIP-1271 wallets) to toggle the flag.
    Removes the "build the message text by hand" foot-gun — the agent fetches
    the message, signs it with the creator wallet, then PATCHes back.
    =============================== */
@@ -5409,7 +5410,7 @@ router.get('/:jobId/public-submissions/sign-payload', async (req, res) => {
       timestamp,
       validForSeconds: 300,
       next: {
-        sign: 'Sign `message` verbatim with the bounty creator wallet (ethers: signer.signMessage(message); web3: personal_sign).',
+        sign: 'Sign `message` verbatim with the bounty creator wallet (ethers: signer.signMessage(message); web3: personal_sign). Smart-contract wallets (Coinbase Smart Wallet, Base Account, agent CDP smart accounts) sign with their own signMessage; the server verifies via EIP-1271 isValidSignature.',
         submit: `PATCH /api/jobs/${jobId}/public-submissions with { publicSubmissions: ${publicSubmissions}, message, signature }`
       }
     });
@@ -5422,7 +5423,8 @@ router.get('/:jobId/public-submissions/sign-payload', async (req, res) => {
 /* ===============================
    PATCH publicSubmissions (creator-signed, off-chain)
    Toggles the off-chain "publicSubmissions" flag on a bounty. Requires a
-   personal_sign message from the bounty creator. CIDs on the blockchain /
+   personal_sign message from the bounty creator — an EOA signature or an
+   EIP-1271 smart-wallet signature. CIDs on the blockchain /
    in API responses are public regardless — this flag only controls whether
    the website surfaces convenient preview/download buttons to non-creators.
    =============================== */
@@ -5447,7 +5449,11 @@ router.patch('/:jobId/public-submissions', async (req, res) => {
     const { verifyPublicSubmissionsAction } = require('../utils/messageAuth');
     let parsed;
     try {
-      parsed = verifyPublicSubmissionsAction({
+      // Async: EOA creators verify via ecrecover; smart-wallet creators
+      // (Coinbase Smart Wallet / Base Account / agent CDP wallets) verify via
+      // EIP-1271 isValidSignature on the creator contract. Any verifier
+      // failure — including RPC errors — lands here as a 401, never a 500.
+      parsed = await verifyPublicSubmissionsAction({
         message,
         signature,
         expectedSigner: job.creator,
