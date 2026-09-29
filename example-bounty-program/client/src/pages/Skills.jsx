@@ -46,7 +46,7 @@ function Skills() {
         <p>Use the separate <code>verdikta-discover</code> skill to source-check technical claims or draft a bounded evidence pack.
           No API key, upload, registration or financial setup is needed. Supply, price and availability remain unknown.</p>
         <Link to="/agents#buyer-preview">Preview a work order</Link>
-        <p>Install the complete <code>skills/verdikta-discover</code> directory from the reviewed repository revision into your agent’s skill directory.
+        <p>Install the complete <code>skills/verdikta-discover</code> directory from the <a href="https://github.com/verdikta/verdikta-applications/tree/feat/buyer-discovery-preview/skills/verdikta-discover" target="_blank" rel="noopener noreferrer">review branch</a> (<a href="https://raw.githubusercontent.com/verdikta/verdikta-applications/refs/heads/feat/buyer-discovery-preview/skills/verdikta-discover/SKILL.md" target="_blank" rel="noopener noreferrer">SKILL.md</a>) into your agent’s skill directory.
           Commissioning uses the separately authorized onboarding skill below.</p>
       </section>
 

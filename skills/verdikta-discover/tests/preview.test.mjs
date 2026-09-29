@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, writeFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -46,8 +46,8 @@ for (const kind of ['source-check-v1','evidence-pack-v1']) {
 }
 test('three decisions retain unknown market data and no authority', async () => {
   const request=await json('examples/source-check-v1.request.json');
-  for (const [context,decision] of [[{sharing_authorized:true},'PREVIEW'],[{sharing_authorized:true,local_sufficient:true},'LOCAL'],[{},'UNSUITABLE'],[{sharing_authorized:true,handoff_requested:true},'HANDOFF_REQUESTED']]) {
-    const a=preview({request,...context});assert.equal(a.decision,decision);assert.equal(a.costs.reward_wei,null);assert.equal(a.supplier.status,'UNKNOWN');assert.equal(a.can_commission,false);assert.equal(a.funds_moved,false);
+  for (const [context,decision] of [[{sharing_authorized:true},'PREVIEW'],[{sharing_authorized:true,local_sufficient:true},'LOCAL'],[{},'NEEDS_SCOPE'],[{sharing_authorized:true,handoff_requested:true},'HANDOFF_REQUESTED']]) {
+    const a=preview({request,procurement_mode:'OPEN',...context});assert.equal(a.decision,decision);assert.equal(a.costs.reward_wei,null);assert.equal(a.supplier.status,'UNKNOWN');assert.equal(a.can_commission,false);assert.equal(a.funds_moved,false);
     const ajv=new Ajv({strict:false});const v=ajv.compile(await json('schemas/preview.schema.json'));assert.ok(v(a),JSON.stringify(v.errors));
   }
 });
@@ -55,26 +55,39 @@ test('targeted missing/zero/invalid supplier never becomes open',async()=>{
   const request=await json('examples/source-check-v1.request.json');
   for (const targetHunter of [null,'garbage','0x'+'0'.repeat(40)]) assert.equal(preview({request,sharing_authorized:true,procurement_mode:'TARGETED',targetHunter}).decision,'NEEDS_SCOPE');
 });
-test('CLI succeeds with empty HOME/env and denies credential/network reads', async () => {
-  const dir=await mkdtemp(`${tmpdir()}/verdikta-preview-`);
+test('CLI runs with filesystem permissions; sentinel reads and network are denied', async () => {
+  const dir=await realpath(await mkdtemp(`${tmpdir()}/verdikta-preview-`));
   try {
-    const input=`${dir}/request.json`, preload=`${dir}/deny.mjs`;
+    const input=`${dir}/request.json`, preload=`${dir}/deny-network.mjs`, secret=`${dir}/credential`;
     await writeFile(input,JSON.stringify(await json('examples/assessment.json')));
-    await writeFile(preload,`import fs from 'node:fs/promises';\nconst read=fs.readFile;fs.readFile=(p,...args)=>{if(String(p)!==${JSON.stringify(input)} && !String(p).startsWith(${JSON.stringify(root.href)}))throw Error('Unexpected file read: '+p);return read(p,...args)};\nglobalThis.fetch=()=>{throw Error('Network attempted')};\n`);
-    for(const extra of [{},{VERDIKTA_WALLET_PASSWORD:'DUMMY',VERDIKTA_KEYSTORE_PATH:`${dir}/never-read-wallet`,VERDIKTA_BOT_FILE:`${dir}/never-read-key`,VERDIKTA_BOUNTIES_BASE_URL:'https://forbidden.invalid'}]) {
-      if (extra.VERDIKTA_KEYSTORE_PATH) {
-        await writeFile(`${dir}/never-read-wallet`, 'DUMMY encrypted wallet sentinel');
-        await writeFile(`${dir}/never-read-key`, '{"apiKey":"DUMMY-do-not-read"}');
-      }
-      const output=execFileSync(process.execPath,['--import',preload,new URL('scripts/preview.mjs',root).pathname,input],{env:{HOME:dir,...extra},encoding:'utf8'});
+    await writeFile(secret,'DUMMY credential sentinel');
+    // Node's permission model on supported older runtimes does not deny network.
+    // Patch builtins and synchronize named exports, then verify the denial probes.
+    await writeFile(preload,`import {syncBuiltinESMExports} from 'node:module';
+import http from 'node:http'; import https from 'node:https'; import net from 'node:net'; import dgram from 'node:dgram';
+const deny=()=>{throw Error('Network denied')};
+for(const m of [http,https]) {m.request=deny;m.get=deny;}
+net.connect=deny;net.createConnection=deny;net.Socket.prototype.connect=deny;dgram.createSocket=deny;
+globalThis.fetch=deny;syncBuiltinESMExports();`);
+    const flags=['--experimental-permission',`--allow-fs-read=${root.pathname}`,`--allow-fs-read=${input}`,`--allow-fs-read=${preload}`,'--import',preload];
+    for(const extra of [{},{VERDIKTA_WALLET_PASSWORD:'DUMMY',VERDIKTA_KEYSTORE_PATH:secret,VERDIKTA_BOT_FILE:secret}]) {
+      const output=execFileSync(process.execPath,[...flags,new URL('scripts/preview.mjs',root).pathname,input],{env:{HOME:dir,...extra},encoding:'utf8'});
       assert.equal(JSON.parse(output).quote_status,'DRAFT_NOT_QUOTED');
     }
+    for (const probe of [
+      `import {readFile} from 'node:fs/promises';await readFile(${JSON.stringify(secret)});`,
+      `import {readFileSync} from 'node:fs';readFileSync(${JSON.stringify(secret)});`,
+      `import {request} from 'node:http';request('http://127.0.0.1');`,
+      `import {connect} from 'node:net';connect(1,'127.0.0.1');`,
+      `fetch('https://example.invalid');`,
+      `import {execFileSync} from 'node:child_process';execFileSync('true');`
+    ]) assert.throws(()=>execFileSync(process.execPath,[...flags,'--input-type=module','-e',probe],{env:{HOME:dir},stdio:'pipe'}));
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
 test('metadata has no gate; preview graph excludes executor',async()=>{
   const skill=await readFile(new URL('SKILL.md',root),'utf8');assert.doesNotMatch(skill.split('---')[1],/requires|primaryEnv|always:|VERDIKTA_/);
-  for(const file of ['scripts/preview-core.mjs','scripts/validation.mjs','scripts/preview.mjs']) {
-    const text=await readFile(new URL(file,root),'utf8');assert.doesNotMatch(text,/from ['"].*(?:_lib|_env|ethers|_executor|_transaction|https|http)['"]|process\.env|fetch\(/);
+  for(const file of ['scripts/preview-core.mjs','scripts/validation.mjs','scripts/preview.mjs','scripts/address.mjs']) {
+    const text=await readFile(new URL(file,root),'utf8');assert.doesNotMatch(text,/from ['"].*(?:_lib|_env|ethers|viem|_executor|_transaction|(?:node:)?(?:https|http|net|dgram|child_process))['"]|process\.env|fetch\(|import\s*\(/);
   }
 });
 test('malformed requests need scope',()=>{
@@ -82,3 +95,47 @@ test('malformed requests need scope',()=>{
 });
 
 test('local work needs neither sharing authorization nor an outsourcing request',()=>{assert.equal(preview({task_summary:'Alphabetize five names',local_sufficient:true}).decision,'LOCAL');});
+
+test('drafts require explicit procurement, sharing and valid checksum addresses',async()=>{
+  const request=await json('examples/source-check-v1.request.json');
+  const valid='0x52908400098527886E0F7030069857D2E4169EE7';
+  for (const targetHunter of [[valid], 123, valid.replace('E0F','e0F'), '0x'+'0'.repeat(40)]) {
+    const a=preview({request,sharing_authorized:true,procurement_mode:'TARGETED',targetHunter});
+    assert.equal(a.decision,'NEEDS_SCOPE');assert.equal(a.draft,null);
+  }
+  const a=preview({request,sharing_authorized:true,procurement_mode:'TARGETED',targetHunter:valid});
+  assert.deepEqual(a.draft.procurement,{mode:'TARGETED',targetHunter:valid});
+  for(const context of [{handoff_requested:true}, {procurement_mode:'OPEN',sharing_authorized:false}, {procurement_mode:'OPEN',local_sufficient:true}]) assert.equal(preview({request,sharing_authorized:true,...context}).draft,null);
+  assert.equal(preview(null).decision,'NEEDS_SCOPE');
+  assert.ok(preview({request,procurement_mode:'OPEN'}).inputs_needed.includes('Obtain sharing approval'));
+  const validate=new Ajv({strict:false}).compile(await json('schemas/preview.schema.json'));
+  assert.equal(validate({...a,procurement:{mode:'INVALID',targetHunter:1}}),false);
+});
+test('exactly 20 claims and 50 cells are valid request boundaries',async()=>{
+  const claims=await json('examples/source-check-v1.request.json');
+  claims.claims=Array.from({length:20},(_,i)=>({claim_id:String(i),text:'claim'}));
+  assert.deepEqual(validateRequest('source-check-v1',claims),[]);
+  const pack=await json('examples/evidence-pack-v1.request.json');
+  pack.entities=Array.from({length:10},(_,i)=>({entity_id:String(i),name:'entity'}));
+  pack.fields=Array.from({length:5},(_,i)=>({field_id:String(i),definition:'field',value_type:'string'}));
+  assert.deepEqual(validateRequest('evidence-pack-v1',pack),[]);
+});
+test('unresolved effort must use approved URLs and blocked access waives only that URL',async()=>{
+  const request=await json('examples/source-check-v1.request.json'),result=await json('examples/source-check-v1.result.json');
+  const digest=result.input_sha256;
+  result.sources=[];
+  for(const row of result.claims) {row.status='UNRESOLVED';row.evidence_ids=[];row.unresolved_reason='No evidence';row.effort=[{location:'https://invented.invalid/',outcome:'ACCESS_BLOCKED',note:'blocked'}];}
+  assert.ok(validateResult('source-check-v1',request,result,digest).some(e=>e.includes('approved URL')));
+  request.source_policy.minimum_locations_per_item=2;
+  assert.ok(validateRequest('source-check-v1',request).some(e=>e.includes('approved source')));
+  request.source_policy.allowed_sources.push('https://fixture.invalid/second');
+  for(const row of result.claims) row.effort[0].location=request.source_policy.allowed_sources[0];
+  assert.ok(validateResult('source-check-v1',request,result,digest).some(e=>e.includes('Minimum search')));
+});
+test('conflicting cells require distinct typed alternatives with source evidence',async()=>{
+  const request=await json('examples/evidence-pack-v1.request.json'),result=await json('examples/evidence-pack-v1.result.json');
+  const row=result.cells[0];row.status='CONFLICTING';row.value=null;
+  row.alternatives=[{value:'JSON',evidence_ids:['S1']},{value:'XML',evidence_ids:['S1']}];
+  assert.deepEqual(validateResult('evidence-pack-v1',request,result,result.input_sha256),[]);
+  row.alternatives[1].value='JSON';assert.ok(validateResult('evidence-pack-v1',request,result,result.input_sha256).length);
+});

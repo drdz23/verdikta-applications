@@ -15,7 +15,7 @@ export default function BuyerPreview() {
   const [error, setError] = useState('');
   function assess(event) {
     event.preventDefault(); setError(''); setAssessment(null);
-    try { setAssessment(preview({ template_id: kind, request: JSON.parse(text), sharing_authorized: sharing, local_sufficient: local, procurement_mode: mode, targetHunter: mode === 'TARGETED' ? target : null })); }
+    try { setAssessment(preview({ template_id: kind, request: JSON.parse(text), sharing_authorized: sharing ? true : undefined, local_sufficient: local, procurement_mode: mode, targetHunter: mode === 'TARGETED' ? target : null })); }
     catch { setError('Enter a valid JSON request. Nothing has been uploaded.'); }
   }
   function download() {
@@ -36,15 +36,15 @@ export default function BuyerPreview() {
         <option value="evidence-pack-v1">Bounded Evidence Pack</option>
       </select></label>
       <label>Supplier selection <select value={mode} onChange={e => { setMode(e.target.value); setAssessment(null); }}>
-        <option value="UNSELECTED">Decide later</option>
+        <option value="UNSELECTED">Choose participation</option>
         <option value="TARGETED">Target a known supplier</option>
         <option value="OPEN">Intentionally open to submissions</option>
       </select></label>
       {mode === 'TARGETED' && <label>Known supplier wallet address
         <input type="text" value={target} onChange={e => { setTarget(e.target.value); setAssessment(null); }} placeholder="0x…" />
       </label>}
-      <p>The prefilled request is a synthetic example. Replace it with your bounded request. A documented unresolved answer is valid; fabricated evidence is not.</p>
-      <label>Describe the deliverable (request JSON)
+      <p>The prefilled request is synthetic and cannot be commissioned. Replace it with your bounded request. A documented unresolved answer is valid; fabricated evidence is not.</p>
+      <label>Request JSON
         <textarea rows={14} value={text} onChange={e => { setText(e.target.value); setAssessment(null); }} spellCheck={false} />
       </label>
       <label><input type="checkbox" checked={sharing} onChange={e => { setSharing(e.target.checked); setAssessment(null); }} /> Inputs are public, non-sensitive and approved for external sharing. This grants no spending authority.</label>
@@ -53,14 +53,15 @@ export default function BuyerPreview() {
     </form>
     {error && <p role="alert">{error}</p>}
     {assessment && <div aria-live="polite">
-      <h3>{assessment.quote_status}: {assessment.decision}</h3>
+      <h3>{{PREVIEW: 'Draft ready for review', HANDOFF_REQUESTED: 'Ready for a separate funding review', NEEDS_SCOPE: 'More information needed', LOCAL: 'Handle this task locally', UNSUITABLE: 'Not suitable for external work'}[assessment.decision]}</h3>
+      <p>Draft only — no quote or spending authorization.</p>
       <p>{assessment.reason}</p>
       <p>Procurement: {assessment.procurement.mode}{assessment.procurement.targetHunter ? ` — ${assessment.procurement.targetHunter}` : ''}</p>
       <p>Supplier: UNKNOWN · Price: UNKNOWN · Availability: UNKNOWN. No live quote or funding authorization exists.</p>
       {assessment.inputs_needed.length > 0 && <ul>{assessment.inputs_needed.map((s, i) => <li key={i}>{s}</li>)}</ul>}
       <p>{assessment.next_action}</p>
       <details><summary>Deliverable, criteria and commissioning requirements</summary><pre>{JSON.stringify(assessment, null, 2)}</pre></details>
-      <button type="button" onClick={download}>Save draft locally</button>
+      {assessment.draft && <button type="button" onClick={download}>Save draft locally</button>}
     </div>}
   </section>;
 }

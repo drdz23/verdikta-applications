@@ -31,5 +31,6 @@
         "text": "Aster API v2.0 retains input data for 30 days."
       }
     ]
-  }
+  },
+  "procurement_mode": "OPEN"
 }
