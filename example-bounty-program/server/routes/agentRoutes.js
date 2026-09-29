@@ -125,7 +125,7 @@ Sign and broadcast the "transaction" object as-is. DO NOT look for data.calldata
 Endpoints that gate execution (/close, /timeout) also return a boolean flag (canClose / canTimeout). When false, the response is a "not yet / not possible" signal, not a server error — read "error" and "details" for next steps.
 
 ## Scripting Patterns (IMPORTANT)
-Four recurring anti-patterns that produce false errors:
+Five recurring anti-patterns that produce false errors or false claims:
 
 1. Capture IDs at the source. POST /api/jobs/create returns jobId in the response —
    read it directly. DO NOT re-query GET /api/jobs to find a bounty you just created;
@@ -204,6 +204,19 @@ Four recurring anti-patterns that produce false errors:
    /start endpoint's transaction.value reads it live; the ethMaxBudget in the prepare
    event is only an estimate), so an under-funded wallet or a stale value fails.
    Check wallet balance before debugging calldata.
+
+5. Verify chain state with a decoder, never by counting byte offsets. Any claim
+   your script makes about a bounty being closed, paid or expired should come from
+   an ABI-aware read (or a tx hash). The quickest zero-dependency check is Foundry's
+   cast, which decodes the getBounty tuple for you (the struct has a dynamic string
+   in slot 2, so hand-written word-scanners misread every field after it):
+     cast call ${escrowAddress} "getBounty(uint256)((address,string,uint64,uint8,uint256,uint256,uint64,uint8,address,uint256,address,uint256,uint256,uint64,(uint256,uint256,uint256,uint256)))" <bountyId> --rpc-url <rpc>
+     cast call ${escrowAddress} "getEffectiveBountyStatus(uint256)(string)" <bountyId> --rpc-url <rpc>
+     cast call ${escrowAddress} "nextAction(uint256,uint256)(string)" <bountyId> <submissionId> --rpc-url <rpc>
+   ethers / viem / web3.py with the merged ABI (${base}/api/abi/BountyEscrow.json,
+   IPFS ${ABI_IPFS_CID}) are equivalent. GET /api/jobs/:id/onchain-status is the
+   same read pre-decoded — a shortcut, not an authority. Full field order and the
+   lens views: "On-Chain Contract Reference" below.
 
 ## List Open Bounties
 GET /api/jobs?status=OPEN
