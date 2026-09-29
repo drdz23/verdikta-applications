@@ -713,9 +713,18 @@
 
 .agents-page .endpoint-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.5rem;
+}
+
+/* Inline code (endpoint paths, /api/... references in prose) has no natural
+   break points; let it wrap anywhere so narrow viewports never scroll
+   horizontally. Code inside <pre> keeps white-space: pre and scrolls within
+   its block instead. */
+.agents-page code:not(pre code) {
+  overflow-wrap: anywhere;
 }
 
 .agents-page .method-badge {
@@ -741,6 +750,7 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--text);
+  min-width: 0;
 }
 
 .agents-page .endpoint-description {

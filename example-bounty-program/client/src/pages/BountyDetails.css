@@ -468,10 +468,19 @@
   border: 1px solid var(--border);
 }
 
+.bounty-details .submission-card {
+  /* Long unbroken strings (42-char hunter addresses, CIDs, agg IDs) must wrap
+     inside the card instead of forcing horizontal page scroll on phones. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .bounty-details .submission-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.5rem;
 }
 
@@ -479,6 +488,8 @@
   font-family: monospace;
   font-size: 0.875rem;
   color: var(--text-secondary);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .bounty-details .submission-card .score {
