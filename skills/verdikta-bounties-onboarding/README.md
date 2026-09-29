@@ -1,7 +1,19 @@
-# Verdikta bounty commissioning
+# Verdikta Bounties operator skill
 
-Start with the separate [wallet-free discovery skill](../verdikta-discover/SKILL.md) to assess outside help. No supplier or quote is implied.
+This skill sets up an explicitly authorized low-balance wallet/API identity and executes reviewed bounty transactions on Base or Base Sepolia. It uses ETH for rewards, evaluation prepay and gas. For wallet-free planning use the separate `verdikta-discover` skill.
 
-This execution skill uses an existing encrypted wallet and API identity under separate owner authorization. Read [SKILL.md](SKILL.md) and [commission configuration](references/commission.md) before running it. Network, destination, bytecode, ABI, arguments and owner caps fail closed. A failed guard is never permission to construct a manual replacement transaction.
+## Install and set up
 
-Install dependencies in `scripts/` with `npm ci --ignore-scripts`. Run `npm test` for mocked compatibility tests. To regenerate ABI/rubric assets in the repository, first compile with `hardhat.local.cjs`, then run `node sync_contract_assets.js`. No publication or deployment is part of these commands.
+Copy the complete skill directory from a reviewed revision. In `scripts/`, run `npm ci --ignore-scripts`, then run `node onboard.js` in a human-controlled terminal after owner approval. The wizard handles network selection, encrypted wallet setup, owner funding, API registration and a read-only job-list smoke check.
+
+For the separate `wallet_init`, `funding_instructions`, `funding_check`, `bot_register` and `preflight` helpers, required environment variables and API endpoint table, see [operator setup](references/onboarding.md). Never put wallet secrets in chat, and never pass confirmation flags without approval of the specific action.
+
+## Execute approved work
+
+Read [SKILL.md](SKILL.md) and [commission configuration](references/commission.md) before creating, submitting, resolving or recovering funds. Every transaction needs the configured network and an owner-reviewed spending policy. Keep saved state files for recovery. A preview never authorizes funding.
+
+Existing bots must follow the [1.5.0 migration notes](references/migration-1.5.0.md). This version is a review candidate; native runtime integration and funded lifecycle testing remain outstanding.
+
+## Validate from a repository checkout
+
+Install dependencies in `scripts/`, `../verdikta-discover/` and `../../example-bounty-program/onchain/`. `npm test` in `scripts/` compiles contracts using the secret-free config before checking ABI compatibility and mocked lifecycle tests. Compilation may download the pinned Solidity compiler on first use; no deployment credentials are loaded. Hosted CI runs the same setup.

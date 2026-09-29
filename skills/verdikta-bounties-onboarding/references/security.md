@@ -36,7 +36,6 @@ Expected external destinations:
 
 - Verdikta Agent API: `https://bounties.verdikta.org` or `https://bounties-testnet.verdikta.org`
 - Base RPC: `https://mainnet.base.org` or `https://sepolia.base.org`, unless explicitly overridden in config
-- Optional 0x swap API: `https://api.0x.org` on mainnet only
 
 Transaction-capable scripts check:
 
@@ -48,12 +47,4 @@ Transaction-capable scripts check:
 Use `--dry-run` where available, then `--yes` or `--confirm-spend` only after reviewing the printed action summary.
 
 ## Approvals / swap risk
-Swapping ETH→LINK requires signing a transaction with calldata provided by a DEX aggregator.
-
-Mitigations:
-- This legacy standalone utility is not part of current bounty execution. Current bounties never require LINK.
-- Only use known endpoints (0x API) and correct chainId.
-- Set strict slippage.
-- Limit swap size.
-- Validate token addresses, transaction value, and quote recipient before signing.
-- Custom 0x endpoints require explicit `--allow-custom-0x`.
+The legacy token-swap script is retired and exits before prompting or loading credentials. Current bounty execution uses ETH prepay.

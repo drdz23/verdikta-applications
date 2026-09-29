@@ -405,17 +405,40 @@ function extractEvaluationWarnings(content) {
   return [...new Set(out)];
 }
 
-// Optional explicit procurement intent; legacy callers without a mode keep their
-// existing open/targeted behavior, but a declared TARGETED request never opens.
+// Mode remains optional for legacy callers. Addresses must be prefixed hex and
+// checksum-valid; a declared TARGETED request never becomes open.
 function validateProcurement(mode, target) {
   if (mode != null && !['OPEN', 'TARGETED'].includes(mode)) return 'procurementMode must be OPEN or TARGETED';
-  if (target != null && target !== '' && !ethers.isAddress(target)) return 'Invalid targetHunter address';
+  if (target != null && target !== '' && (typeof target !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(target) || !ethers.isAddress(target))) return 'Invalid targetHunter address';
   if (mode === 'TARGETED' && (!target || target.toLowerCase() === ethers.ZeroAddress)) return 'TARGETED requires a nonzero targetHunter';
   if (mode === 'OPEN' && target && target.toLowerCase() !== ethers.ZeroAddress) return 'OPEN cannot name a targetHunter';
   return null;
 }
 
+// Normalize before IPFS/storage writes. Exponent and signed strings are rejected,
+// while ordinary legacy numeric payloads and trimmed decimal strings are accepted.
+function normalizeBountyPayments(body) {
+  function amount(value, name) {
+    if (!['string', 'number'].includes(typeof value)) throw new Error(`${name} must be a decimal ETH amount`);
+    let wei;
+    try { wei = ethers.parseEther(String(value).trim()); }
+    catch { throw new Error(`${name} must be a plain decimal ETH amount with at most 18 decimal places`); }
+    if (wei <= 0n || wei >= (1n << 128n)) throw new Error(`${name} must be positive and fit the escrow uint128 payment field`);
+    return wei;
+  }
+  const bounty = amount(body.bountyAmount, 'bountyAmount');
+  const creator = amount(body.creatorDeterminationPayment ?? body.bountyAmount, 'creatorDeterminationPayment');
+  const arbiter = amount(body.arbiterDeterminationPayment ?? body.bountyAmount, 'arbiterDeterminationPayment');
+  const seconds = Number(body.creatorAssessmentWindowHours ?? 0) * 3600;
+  const duration = Number(body.submissionWindowHours ?? 24) * 3600;
+  if (!Number.isSafeInteger(seconds) || seconds < 0 || !Number.isSafeInteger(duration) || duration <= seconds + 2) throw new Error('Invalid assessment/submission window');
+  if (!seconds && creator !== arbiter) throw new Error('No-window determination payments must be equal');
+  if (bounty !== (creator > arbiter ? creator : arbiter)) throw new Error('bountyAmount must equal the maximum determination payment');
+  return { bountyAmount: ethers.formatEther(bounty), creatorDeterminationPayment: ethers.formatEther(creator), arbiterDeterminationPayment: ethers.formatEther(arbiter), creatorAssessmentWindowSize: seconds };
+}
+
 module.exports = {
+  normalizeBountyPayments,
   validateProcurement,
   isValidCid,
   extractEvaluationWarnings,

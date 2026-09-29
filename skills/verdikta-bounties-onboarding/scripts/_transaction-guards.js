@@ -38,7 +38,8 @@ export function creationTerms(config) {
   const oracle = { maxOracleFee: uint(o.maxOracleFee, 'oracle fee'), alpha: uint(o.alpha, 'alpha', 1000n), estimatedBaseCost: uint(o.estimatedBaseCost, 'base cost'), maxFeeBasedScaling: uint(o.maxFeeBasedScaling, 'scaling', 1000n) };
   if (!oracle.maxOracleFee || oracle.estimatedBaseCost >= oracle.maxOracleFee || !oracle.maxFeeBasedScaling) throw new Error('Invalid oracle settings');
   const hours = Number(config.submissionWindowHours);
-  if (!Number.isFinite(hours) || hours <= 0 || !Number.isSafeInteger(hours * 3600) || BigInt(hours * 3600) <= window + 2n) throw new Error('Invalid submission window');
+  if (!Number.isSafeInteger(hours) || hours <= 0 || !Number.isSafeInteger(hours * 3600) || BigInt(hours * 3600) <= window + 2n) throw new Error('Submission window must be whole hours');
+  if (window % 3600n !== 0n) throw new Error('Creator assessment window must be whole hours');
   return { params: { requestedClass, threshold, targetHunter, creatorDeterminationPayment: creator, arbiterDeterminationPayment: arbiter, creatorAssessmentWindowSize: window, oracle }, value };
 }
 export function bindCreation(config, response, { recovery = false } = {}) {
@@ -50,7 +51,12 @@ export function bindCreation(config, response, { recovery = false } = {}) {
   const deadline = uint(job.submissionCloseTime, 'server deadline', (1n << 64n) - 1n);
   const opened = uint(job.submissionOpenTime, 'server open time');
   if (deadline - opened !== BigInt(Number(config.submissionWindowHours) * 3600)) throw new Error('Server deadline window drift');
-  if (!recovery && deadline <= BigInt(Math.floor(Date.now() / 1000))) throw new Error('Server deadline expired');
+  if (!recovery) {
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const drift = deadline - (now + BigInt(Number(config.submissionWindowHours) * 3600));
+    if (deadline <= now) throw new Error('Server deadline expired');
+    if (drift < -900n || drift > 900n) throw new Error('Server deadline differs from the local clock by more than 15 minutes');
+  }
   if (Number(job.threshold) !== Number(config.threshold)) throw new Error('Server threshold drift');
   return { params: { ...params, evaluationCid: job.evaluationCid, submissionDeadline: deadline }, value, transaction: response.onChain.transaction };
 }
@@ -75,4 +81,15 @@ export async function verifyDeployment(network, provider, docs) {
     if (!signature || new Interface([`function ${signature}`]).getFunction(name).selector !== iface.getFunction(name).selector) throw new Error('Live ABI selector drift');
   }
   return d.address;
+}
+
+export function verifyCreatedBounty(bounty, expected, creator) {
+  if (getAddress(bounty.creator) !== getAddress(creator)) throw new Error('Created bounty creator mismatch');
+  for (const [key, value] of Object.entries(expected)) {
+    if (key === 'oracle') {
+      for (const [field, term] of Object.entries(value)) if (BigInt(bounty.oracle[field]) !== term) throw new Error(`Created bounty oracle ${field} mismatch`);
+    } else if (key === 'targetHunter') {
+      if (getAddress(bounty[key]) !== getAddress(value)) throw new Error('Created bounty target mismatch');
+    } else if (typeof value === 'bigint' ? BigInt(bounty[key]) !== value : bounty[key] !== value) throw new Error(`Created bounty ${key} mismatch`);
+  }
 }

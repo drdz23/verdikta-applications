@@ -22,7 +22,7 @@ export async function loadSpendPolicy() {
   if (!BigInt(p.maxGasLimit) || !BigInt(p.maxFeePerGasWei) || BigInt(p.maxPriorityFeePerGasWei) > BigInt(p.maxFeePerGasWei)) throw new Error('Invalid gas policy');
   return Object.fromEntries(['maxValueWei', 'maxTotalWei', 'maxGasLimit', 'maxFeePerGasWei', 'maxPriorityFeePerGasWei'].map(key => [key, p[key]]));
 }
-export async function execute(signer, method, tx, { network, args, exactValueWei = 0n, policy, dryRun = false, confirm, onBroadcast }) {
+export async function execute(signer, method, tx, { network, args, exactValueWei = 0n, policy, dryRun = false, confirm, onBroadcast, onBeforeBroadcast, review = [] }) {
   if (approvedProviders.get(signer.provider)?.network !== network) throw new Error('Deployment preflight required before signing');
   // Re-check live chain/code/docs even for the second transaction of a lifecycle.
   await preflightDeployment(network, signer.provider, deployments[network].docsUrl.replace(/\/api\/docs$/, ''));
@@ -38,9 +38,10 @@ export async function execute(signer, method, tx, { network, args, exactValueWei
   const maxFeePerGas = BigInt(policy.maxFeePerGasWei), maxPriorityFeePerGas = BigInt(policy.maxPriorityFeePerGasWei);
   const reserve = base.value + gasLimit * maxFeePerGas;
   if (reservedWei + reserve > BigInt(policy.maxTotalWei)) throw new Error('Run total exceeds owner cap');
-  console.log(JSON.stringify({ method, ...base, gasLimit, maxFeePerGas, maxPriorityFeePerGas, maxExecutionCostWei: reserve, policy }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2));
+  console.log(JSON.stringify({ method, review, ...base, gasLimit, maxFeePerGas, maxPriorityFeePerGas, maxExecutionCostWei: reserve, policy }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2));
   if (dryRun) return null;
-  await confirm(['Review exact destination, chain, value, calldata and caps above. Base L1 data fees are additional; keep a funded reserve.']);
+  await confirm([...review, 'Review exact destination, chain, value, calldata and caps above. Base L1 data fees are additional; keep a funded reserve.']);
+  if (onBeforeBroadcast) await onBeforeBroadcast();
   reservedWei += reserve;
   const sent = await signer.sendTransaction({ ...base, gasLimit, maxFeePerGas, maxPriorityFeePerGas });
   // Print hash immediately; never retry a broadcast automatically.

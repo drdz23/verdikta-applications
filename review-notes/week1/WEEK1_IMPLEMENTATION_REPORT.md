@@ -1,3 +1,7 @@
+# Historical implementation snapshot
+
+This is archived review evidence, outside the published documentation tree. Counts and inventory below describe earlier commits. See PR review responses for current validation.
+
 # Week 1 agent-buyer implementation report
 
 Implementation originally validated locally on `feat/week1-agent-buyer`. At the owner’s subsequent request, the work is being submitted as two stacked review PRs: `feat/buyer-discovery-preview` (discovery and UI), then `feat/week1-agent-buyer` (execution, validation and this report). No deployment or registry publication was performed. Native-agent eligibility and model-selection release gates remain unverified; this report does not claim end-to-end market activation.
@@ -13,7 +17,7 @@ Only `verdikta-applications` was changed. `verdikta-agents` was a read-only refe
 - `client/playwright.buyer.config.js` and `tests/e2e/start-buyer-server.mjs`: self-contained, secret-free browser test fixture with dummy public addresses; the test server stops after the run.
 - `client/src/utils/rubricWeights.js`, `pages/CreateBounty.jsx`: weight feedback aligned with the current server convention, including zero-weight must-pass gates and 0.001 scored-weight tolerance.
 - `server/routes/agentRoutes.js`: buyer entry in public agent documentation, with explicit draft/commission separation and independently verified transaction descriptors.
-- `server/routes/jobRoutes.js`, `utils/validation.js`: explicit procurement intent fails closed; preserve new bounty ETH amount strings through persistence; malformed rubric criteria/non-finite weights return validation failures. Existing no-mode API callers retain their prior behavior.
+- `server/routes/jobRoutes.js`, `utils/validation.js`: explicit procurement intent fails closed; preserve new bounty ETH amount strings through persistence; malformed rubric criteria/non-finite weights return validation failures. Procurement mode remains optional, but address validation now requires prefixed checksum-valid hex.
 - `server/test/buyerTemplates.test.js`, corrected `test/sample-rubric.json`: canonical validator checks for the supplied templates and creator fixture.
 - `onchain/hardhat.local.cjs`: local compilation/tests without deployment secrets. No Solidity change.
 - Updated skill docs, metadata and publication file allowlist; new release files are local only. ABI/rubric generation is reproducible via `sync_contract_assets.js`, and tests compare generated assets with current source/artifacts.
@@ -60,7 +64,7 @@ Claim results include original claim, verdict, scope/date, evidence references, 
 | Rubric validation | Nonzero must weights, absent must fields, embedded threshold; UI tolerance mismatch | Must-pass weight zero, valid IDs/description/must, scored sum 1 within 0.001 (all-zero allowed by current server), threshold separate | Fixed active examples/templates/UI; generated canonical creator validator with drift test |
 | Reference document | Older agents document treated as unquestionable ground truth | `verdikta-agents/docs/verdikta_bounty_surface.md` still describes positional/legacy layouts in places | Current applications source, compiled artifacts, live docs and bytecode used; reference repo unchanged |
 
-Live evidence is recorded in `docs/week1-live-verification.json`. GET `/api/docs` succeeded on both networks and mainnet `/agents.txt` succeeded. Freshly compiled escrow runtime matches deployed runtime on both networks after masking constructor immutables and compiler metadata. getBounty, requiredPrepay, effectiveOracleParams and lens reads succeeded; mainnet getSubmission decoded the current 12-field tuple and nextAction returned DONE for the sampled submission. Sampled requiredPrepay was 240000000000000 wei on both networks at observation time; this is not a quote for future work. Default public RPC rate limits were resolved using alternative public read-only RPCs, without bypassing any transaction guard.
+Live evidence is recorded in `review-notes/week1/week1-live-verification.json`. GET `/api/docs` succeeded on both networks and mainnet `/agents.txt` succeeded. Freshly compiled escrow runtime matches deployed runtime on both networks after masking constructor immutables and compiler metadata. getBounty, requiredPrepay, effectiveOracleParams and lens reads succeeded; mainnet getSubmission decoded the current 12-field tuple and nextAction returned DONE for the sampled submission. Sampled requiredPrepay was 240000000000000 wei on both networks at observation time; this is not a quote for future work. Default public RPC rate limits were resolved using alternative public read-only RPCs, without bypassing any transaction guard.
 
 Both `/api/classes` and `/api/classes/128/models` returned HTTP 401 without credentials. No API key was loaded to bypass this; current available models remain unverified. Executor checks them using its separately configured identity before creating API state.
 
@@ -169,7 +173,7 @@ Changed/untracked files at report generation (`M` modified, `??` untracked):
  M skills/verdikta-bounties-onboarding/scripts/preflight.js
  M skills/verdikta-bounties-onboarding/scripts/submit_to_bounty.js
 ?? docs/WEEK1_IMPLEMENTATION_REPORT.md
-?? docs/week1-live-verification.json
+?? review-notes/week1/week1-live-verification.json
 ?? example-bounty-program/client/playwright.buyer.config.js
 ?? example-bounty-program/client/src/components/BuyerPreview.css
 ?? example-bounty-program/client/src/components/BuyerPreview.jsx

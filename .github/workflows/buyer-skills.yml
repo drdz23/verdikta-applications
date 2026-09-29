@@ -1,0 +1,40 @@
+name: Buyer skills
+on:
+  pull_request:
+    paths:
+      - 'skills/verdikta-*/**'
+      - 'example-bounty-program/**'
+      - '.github/workflows/buyer-skills.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install locked dependencies without lifecycle scripts
+        run: |
+          npm ci --ignore-scripts --prefix skills/verdikta-discover
+          npm ci --ignore-scripts --prefix skills/verdikta-bounties-onboarding/scripts
+          npm ci --ignore-scripts --prefix example-bounty-program/server
+          npm ci --ignore-scripts --prefix example-bounty-program/client
+          npm ci --ignore-scripts --prefix example-bounty-program/onchain
+      - name: Compile ABI and run discovery and transaction tests
+        run: |
+          npm test --prefix skills/verdikta-bounties-onboarding/scripts
+          npm test --prefix skills/verdikta-discover
+          node --test example-bounty-program/client/tests/unit/*.test.js
+      - name: Server and contracts
+        run: |
+          npm test --prefix example-bounty-program/server -- --runInBand
+          npm run test:offline --prefix example-bounty-program/onchain
+      - name: Buyer browser checks and build (no environment files)
+        working-directory: example-bounty-program/client
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test --config playwright.buyer.config.js
+          node --input-type=module -e "import {build} from 'vite'; await build({envDir:false,mode:'test'});"

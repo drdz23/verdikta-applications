@@ -237,7 +237,7 @@ function applyChainBountyFields(localJob, chainBounty) {
   if (chainBounty.evaluationCid) set('evaluationCid', chainBounty.evaluationCid);
   if (chainBounty.classId != null) set('classId', Number(chainBounty.classId));
   if (chainBounty.threshold != null) set('threshold', Number(chainBounty.threshold));
-  if (chainBounty.bountyAmount != null) set('bountyAmount', parseFloat(chainBounty.bountyAmount));
+  if (chainBounty.bountyAmount != null) set('bountyAmount', String(chainBounty.bountyAmount));
   if (chainBounty.submissionCloseTime != null) set('submissionCloseTime', Number(chainBounty.submissionCloseTime));
   if (chainBounty.createdAt != null) {
     // Don't clobber the local createdAt if it already exists; chain createdAt
@@ -1540,7 +1540,7 @@ class SyncService {
       description,
       workProductType,
       creator: bounty.creator,
-      bountyAmount: parseFloat(bounty.bountyAmount),
+      bountyAmount: String(bounty.bountyAmount),
       bountyAmountUSD: 0,
       threshold: bounty.threshold,
       evaluationCid: bounty.evaluationCid,

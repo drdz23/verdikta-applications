@@ -1,2 +1,18 @@
 #!/usr/bin/env node
-throw new Error('Legacy ABI executor retired. Use create_bounty.js or submit_to_bounty.js with reviewed configuration and spend policy. Never bypass compatibility guards.');
+// Read-only onboarding smoke check: list open jobs, never submit or sign.
+import { fileURLToPath } from 'node:url';
+export async function listOpenJobs({baseUrl, apiKey, fetchApi = globalThis.fetch}) {
+  if (!baseUrl || !apiKey) throw new Error('Configured API origin and identity required; run authorized onboarding first');
+  const url = new URL(`${baseUrl.replace(/\/+$/, '')}/api/jobs`);
+  url.searchParams.set('status', 'OPEN');
+  url.searchParams.set('minHoursLeft', '2');
+  const response = await fetchApi(url, {method:'GET', headers:{'X-Bot-API-Key':apiKey}, redirect:'error'});
+  if (!response.ok) throw new Error(`Job listing failed: HTTP ${response.status}`);
+  const data = await response.json();
+  for (const job of data.jobs || []) console.log(`#${job.jobId}: ${job.title} — $${job.bountyAmountUSD || 0}`);
+  return data.jobs || [];
+}
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const {loadApiKey} = await import('./_lib.js');
+  await listOpenJobs({baseUrl:process.env.VERDIKTA_BOUNTIES_BASE_URL, apiKey:await loadApiKey()});
+}

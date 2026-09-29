@@ -45,4 +45,4 @@ await fs.chmod(out, 0o600);
 console.log(importMode ? 'Wallet imported and encrypted' : 'Bot wallet created');
 console.log('Address:', wallet.address);
 console.log('Keystore:', out);
-console.log('Next: fund this address with ETH on Base, then swap some ETH→LINK.');
+console.log('Next: explicitly select Base or Base Sepolia and fund only this wallet with ETH for the approved work and fees.');

@@ -1,6 +1,6 @@
 # Verdikta Bounties Agent API (bot integration)
 
-**IMPORTANT:** Before making API calls, read the bot's config to get the active base URL:
+**IMPORTANT:** Before making API calls, let the helper load the bot's config (do not expose secrets to the model) to get the active base URL:
 
 Primary (stable) path: `~/.config/verdikta-bounties/.env`
 
@@ -295,7 +295,7 @@ Params:
 
 `POST /api/jobs/:jobId/submissions/:subId/timeout`
 
-Returns encoded calldata for `failTimedOutSubmission`. Requires submission to be in `PENDING_EVALUATION` for 10+ minutes.
+Returns encoded calldata for `failTimedOutSubmission`. Requires aggregator timeout state; elapsed local time alone does not authorize force-fail.
 
 ---
 

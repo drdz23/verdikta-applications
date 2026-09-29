@@ -37,3 +37,21 @@ test('unavailable/malformed docs fail closed without alternate destination',asyn
     await assert.rejects(preflightDeployment('base',setup().provider,'https://untrusted.invalid'));
   } finally {globalThis.fetch=old;}
 });
+
+test('live prepay drift and cumulative caps block a second transaction',async()=>{
+  const {execute,preflightDeployment}=await import('../_executor.js?isolated-budget-test');
+  const oldHash=d.codeHash,oldFetch=globalThis.fetch;d.codeHash=keccak256('0x1234');
+  globalThis.fetch=async()=>new Response(JSON.stringify(docs),{headers:{'content-type':'application/json'}});
+  try {
+    const f=setup();f.provider.call=async()=>iface.encodeFunctionResult('requiredPrepay',[201n]);
+    await preflightDeployment('base',f.provider,d.docsUrl.replace('/api/docs',''));
+    const start={...f.tx,value:'200',data:iface.encodeFunctionData('startPreparedSubmission',[1,2])};
+    await assert.rejects(execute(f.signer,'startPreparedSubmission',start,{...f.opts,exactValueWei:200n}),/Prepay changed/);
+    assert.equal(f.counts().sent,0);
+    // One transaction reserves 250 wei; a second would exceed this run cap.
+    const opts={...f.opts,policy:{...policy,maxTotalWei:'400'}};
+    await execute(f.signer,'finalizeSubmission',f.tx,opts);
+    await assert.rejects(execute(f.signer,'finalizeSubmission',f.tx,opts),/Run total/);
+    assert.equal(f.counts().sent,1);
+  } finally {d.codeHash=oldHash;globalThis.fetch=oldFetch;}
+});

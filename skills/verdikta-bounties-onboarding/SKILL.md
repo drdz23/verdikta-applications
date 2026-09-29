@@ -1,6 +1,6 @@
 ---
 name: verdikta-bounties-onboarding
-description: "Verdikta Bounties hot-wallet operator for Base. Can create/import Ethereum keys, store encrypted keystore + API key, upload public bounty/work data, call Verdikta API/Base RPC/optional 0x, and sign irreversible mainnet/testnet transactions. Use fresh low-balance wallets only."
+description: "Verdikta Bounties hot-wallet operator for Base. Can create/import Ethereum keys, store encrypted keystore + API key, upload public bounty/work data, call Verdikta API/Base RPC, and sign irreversible mainnet/testnet transactions. Use fresh low-balance wallets only."
 metadata:
   clawdbot:
     emoji: "⚖️"
@@ -31,7 +31,6 @@ metadata:
         - "https://bounties-testnet.verdikta.org"
         - "https://mainnet.base.org"
         - "https://sepolia.base.org"
-        - "https://api.0x.org"
       shell:
         - "node"
         - "npm"
@@ -49,7 +48,15 @@ For deciding whether to hire a specialist, outsource research, or buy a bounded 
 
 These scripts use an existing encrypted hot wallet and API identity. Keep low balances; never paste a private key, password or API key into model context or logs. Wallet creation/import, bot registration and funding are separate explicitly authorized operations, never prerequisites for discovery. Existing hosted-agent custody/policy arrangements remain separate; do not migrate them to these scripts.
 
-The model expresses intent. Deterministic code validates the exact transaction and enforces limits before signing. `--yes` or `--confirm-spend` acknowledges the displayed review; neither bypasses validation. Never bypass a failed guard with a manual transaction, alternate RPC/contract, or duplicate bounty.
+The model expresses intent. Deterministic code validates the exact transaction and enforces limits before signing. `--yes` or `--confirm-spend` acknowledges the displayed review; neither bypasses validation. Never pass `--yes` or `--confirm-spend` without owner approval of that specific action and its exact terms. These flags acknowledge approval; they do not grant it. Never bypass a failed guard with a manual transaction, alternate RPC/contract, or duplicate bounty.
+
+## Onboard an authorized operator
+
+For discovery alone use `verdikta-discover`. For an owner-approved wallet setup, run `node onboard.js` interactively from `scripts/`. The wizard selects Base or Base Sepolia, creates/imports an encrypted low-balance wallet, waits for ETH funding, registers an API identity, and finishes with a read-only job listing. A human enters secrets in their own terminal; never put them in chat or model logs.
+
+For separate steps, environment configuration and endpoint reference, read [operator setup](references/onboarding.md). The available helpers are `wallet_init.js`, `funding_instructions.js`, `funding_check.js`, `bot_register.js`, `preflight.js` and the read-only `bounty_worker_min.js`. Wallet creation/import, registration and funding each require owner authorization. Current evaluation fees are ETH; no LINK purchase or swap is needed.
+
+Existing installations must read [1.5.0 migration notes](references/migration-1.5.0.md) before running transaction scripts.
 
 ## Install and configure commission mode
 
@@ -73,7 +80,7 @@ Review supplier or explicit OPEN status, exact reward/split payments, criteria a
 
 `procurementMode` must be OPEN or TARGETED. TARGETED requires a valid nonzero `targetHunter`. Missing/invalid targets never become open bounties. Preview classification grants no funding authority.
 
-State is saved beside the config as `.state.json`, exclusively created before any mutation. Keep it. After broadcast the transaction hash is recorded before waiting. For a saved broadcast, `--resume state.json` verifies the transaction and only reconciles its receipt to the API; it never creates or funds another bounty. If the process stopped before saving the hash, inspect the existing job and chain manually through read-only tools before recovery. Never delete the state file merely to retry creation.
+State is saved beside the config as `.state.json`, exclusively created before any mutation. Keep it. After broadcast the transaction hash is recorded before waiting. For a saved broadcast, `--resume state.json` verifies the transaction and only reconciles its receipt to the API; it never creates or funds another bounty. A saved API_CREATED state can resume to its first broadcast after fresh checks and approval. BROADCAST_PENDING without a hash is ambiguous and requires manual read-only reconciliation; it cannot auto-retry. Never delete the state file merely to retry creation.
 
 ## Financial dry-run versus local preview
 
@@ -97,7 +104,7 @@ RefundDeferred requires later `recoverLeftoverEth`; PaymentDeferred means the re
 
 `scripts/bounty-escrow.abi.json` is generated from current escrow and lens artifacts. `scripts/deployments.json` pins observed live addresses/code hashes for maintainer review. Live docs resolve the active address but cannot authorize a new destination. Chain/address/code/selector disagreement fails closed; deployment updates need maintainer review and regenerated checks.
 
-Legacy minimal creator/worker scripts are retired with a hard error. The optional old ETH-to-LINK utility is unrelated to current bounty execution and is never invoked by discovery, submission or onboarding.
+The legacy minimal creator script is retired with a hard error. The legacy token-swap utility is retired and exits before loading configuration or prompting. The minimal worker remains a read-only listing smoke check.
 
 ## References
 

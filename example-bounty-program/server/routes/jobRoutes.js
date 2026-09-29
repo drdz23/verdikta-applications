@@ -16,7 +16,7 @@ const jobStorage = require('../utils/jobStorage');
 const { packageRubricHash } = require('../utils/rubricSource');
 const { config } = require('../config');
 const archiveGenerator = require('../utils/archiveGenerator');
-const { validateRubric, validateJuryNodes, validateProcurement, isValidFileType, MAX_FILE_SIZE,
+const { validateRubric, validateJuryNodes, normalizeBountyPayments, validateProcurement, isValidFileType, MAX_FILE_SIZE,
         oracleUnreadableReason, detectBinaryContainer, ALLOWED_ZIP_BASED_EXTENSIONS,
         parseFeeToWei, extractEvaluationWarnings } = require('../utils/validation');
 const { getVerdiktaService, isVerdiktaServiceAvailable } = require('../utils/verdiktaService');
@@ -340,8 +340,6 @@ router.post('/create', async (req, res) => {
   logger.info('[jobs/create] incoming keys', { keys });
 
   try {
-    await ensureTmpBase();
-
     const {
       title,
       description,
@@ -399,9 +397,10 @@ router.post('/create', async (req, res) => {
     }
     const procurementError = validateProcurement(req.body?.procurementMode, targetHunter);
     if (procurementError) return res.status(400).json({ error: 'Invalid procurement intent', details: procurementError });
-    if (!Number.isFinite(Number(bountyAmount)) || Number(bountyAmount) <= 0) {
-      return res.status(400).json({ error: 'Invalid bountyAmount', details: 'Must be a positive number' });
-    }
+    let payments;
+    try { payments = normalizeBountyPayments(req.body); }
+    catch (error) { return res.status(400).json({ error: 'Invalid bounty payment', details: error.message }); }
+    const normalizedTarget = !targetHunter || ethers.getAddress(targetHunter) === ethers.ZeroAddress ? null : ethers.getAddress(targetHunter);
     if (!Number.isFinite(Number(threshold)) || Number(threshold) < 0 || Number(threshold) > 100) {
       return res.status(400).json({ error: 'Invalid threshold', details: 'Threshold must be between 0 and 100' });
     }
@@ -467,6 +466,8 @@ router.post('/create', async (req, res) => {
     if (!rubricJson && !rubricCidIn) {
       return res.status(400).json({ error: 'Missing rubric', details: 'Provide rubricJson or rubricCid' });
     }
+
+    await ensureTmpBase();
 
     // ---- Resolve rubricCid ----
     let rubricCid;
@@ -645,7 +646,7 @@ router.post('/create', async (req, res) => {
       description,
       workProductType,
       creator,
-      bountyAmount: String(bountyAmount),
+      ...payments,
       bountyAmountUSD: Number(bountyAmountUSD || 0),
       threshold: Number(threshold),
       rubricCid,
@@ -655,13 +656,8 @@ router.post('/create', async (req, res) => {
       iterations: Number(iterations),
       submissionOpenTime,
       submissionCloseTime,
-      targetHunter: targetHunter || null,
+      targetHunter: normalizedTarget,
       publicSubmissions: !!publicSubmissions,
-      ...(creatorDeterminationPayment != null ? {
-        creatorDeterminationPayment: String(creatorDeterminationPayment),
-        arbiterDeterminationPayment: String(arbiterDeterminationPayment),
-        creatorAssessmentWindowSize: Math.trunc(Number(creatorAssessmentWindowHours) * 3600),
-      } : {}),
       // Creator-chosen oracle request settings (wei strings + integers). Passed
       // verbatim into createBounty's `oracle` struct and used for every evaluation.
       oracleSettings,

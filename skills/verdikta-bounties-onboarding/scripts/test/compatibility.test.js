@@ -92,3 +92,10 @@ test('API reuse stops new funding; saved recovery permits expired server deadlin
   assert.throws(()=>bindCreation(config,expired));
   assert.equal(bindCreation(config,expired,{recovery:true}).params.submissionDeadline,86401n);
 });
+
+test('future clock drift and fractional windows stop creation before mutation',()=>{
+  const shifted={...response,job:{...response.job,submissionOpenTime:opened+86400,submissionCloseTime:opened+172800}};
+  assert.throws(()=>bindCreation(config,shifted),/local clock/);
+  assert.throws(()=>creationTerms({...config,submissionWindowHours:1.5}),/whole hours/);
+  assert.throws(()=>creationTerms({...config,creatorAssessmentWindowSeconds:3900}),/whole hours/);
+});

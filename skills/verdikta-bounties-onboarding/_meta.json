@@ -2,7 +2,7 @@
   "ownerId": "kn70kt901qt3bjzwb1v3q90jm181xhyf",
   "slug": "verdikta-bounties-onboarding",
   "version": "1.5.0",
-  "description": "Hot-wallet Verdikta Bounties operator for Base. Creates/imports Ethereum keys, stores encrypted keystore and API key locally, uploads public bounty/work data, calls Verdikta API/Base RPC/optional 0x, and can sign irreversible mainnet/testnet transactions.",
+  "description": "Hot-wallet Verdikta Bounties operator for Base. Creates/imports Ethereum keys, stores encrypted keystore and API key locally, uploads public bounty/work data, calls Verdikta API/Base RPC, and can sign irreversible mainnet/testnet transactions.",
   "permissions": {
     "shell": {
       "binaries": [
@@ -17,9 +17,6 @@
         "https://bounties-testnet.verdikta.org",
         "https://mainnet.base.org",
         "https://sepolia.base.org"
-      ],
-      "optional": [
-        "https://api.0x.org"
       ],
       "notes": "Configured Base RPC URLs and Verdikta API URL are read from the skill config; custom endpoints should be reviewed before signing."
     },
@@ -58,8 +55,7 @@
         "create/fund bounty",
         "submit work",
         "start evaluation with payable ETH prepay",
-        "finalize or claim payout",
-        "optional ETH-to-LINK swap"
+        "finalize or claim payout"
       ]
     }
   },
@@ -91,8 +87,6 @@
     "optional": [
       "BASE_RPC_URL",
       "BASE_SEPOLIA_RPC_URL",
-      "ZEROX_BASE_URL",
-      "ZEROX_API_KEY",
       "OFFBOT_ADDRESS"
     ],
     "sensitive": true,
