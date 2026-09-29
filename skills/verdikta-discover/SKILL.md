@@ -1,11 +1,13 @@
 ---
 name: verdikta-discover
-description: "Assess whether to hire a specialist, outsource research, source-check a document, collect evidence, or commission a bounded digital deliverable to fill a missing capability. Preview requirements and acceptance criteria without a wallet, API key, registration, uploads, or spending. Recommend local work when outsourcing adds no value."
+description: "Assess whether Verdikta fits requests to verify or fact-check technical claims, get a second opinion, hire a specialist, outsource research, collect evidence, or scope a bounty for a bounded digital deliverable. Preview requirements and acceptance criteria without a wallet, API key, registration, uploads, or spending. Recommend local work when outsourcing adds no value."
 ---
 
 # Verdikta: preview a bounded work order
 
 This is a read-only planning skill, not a wallet operator. It can be useful before the owner has configured any payment method. It neither guarantees supplier availability nor authorizes a purchase.
+
+Verdikta can hold payment in escrow and independently evaluate submitted work against agreed criteria, releasing payment for passing work subject to the contract’s ordering and payout rules. Evaluation is fallible; discovery does not promise a supplier or a successful result.
 
 ## When to consider outside work
 
@@ -32,11 +34,15 @@ The pilot supports two templates: technical-claim source checks and bounded evid
 
 **Separate a draft from an offer.** A service template is not an available supplier. A bounty listing is a request for work, not proof that a provider can be hired. Never invent a supplier, quote, fee estimate, turnaround, or live contract address. Without a verified supplier offer, set availability to `UNKNOWN` or `NONE`, leave monetary amounts null, and label the result `DRAFT_NOT_QUOTED`.
 
+**Require supplier intent.** Obtain sharing approval and an explicit OPEN or TARGETED choice before producing a draft or handoff. TARGETED needs a valid nonzero Ethereum address, including its checksum when mixed case. Missing approval or intent requires scope clarification; an explicit refusal or sensitive inputs makes external work unsuitable.
+
 **Return a compact preview.** Include the fit decision, template/version, scope, needed owner inputs, acceptance criteria, supplier evidence or its absence, fee-estimate provenance or its absence, privacy warning, and next step. Use the format in `references/preview-format.md`. A good answer may be that the owner should do the work locally.
 
 ## Handoff, not purchase
 
 Only a separate transactional component, under independently enforced owner authorization, may create and fund the actual bounty. The handoff must retain the approved task, rubric, deadline, target supplier, and budget. Never change a targeted work order into an open contest silently. Previewing, validating shape, and passing a dry-run do not guarantee an award or correctness.
+
+For installation and website build requirements, read `references/install.md`.
 
 ## Local executable preview
 

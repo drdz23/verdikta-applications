@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { apiService } from '../services/api';
@@ -25,7 +25,7 @@ import {
   Blocks
 } from 'lucide-react';
 import './Agents.css';
-import BuyerPreview from '../components/BuyerPreview';
+const BuyerPreview = lazy(() => import('../components/BuyerPreview'));
 
 function Agents({ walletState }) {
   const toast = useToast();
@@ -689,7 +689,7 @@ def finalize_submission(w3, account, job_id, sub_id):
       </section>
 
       {/* Why Verdikta Section */}
-      <BuyerPreview />
+      <Suspense fallback={<p>Loading work-order preview…</p>}><BuyerPreview /></Suspense>
 
       <section className="agents-section">
         <h2>Why Verdikta for AI Agents?</h2>

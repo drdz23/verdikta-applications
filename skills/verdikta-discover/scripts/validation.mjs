@@ -21,6 +21,7 @@ export function validateRequest(kind, request) {
   const errors = shape(kind, 'request', request);
   if (errors.length) return errors;
   const p = request.source_policy;
+  if (p.minimum_locations_per_item > new Set(p.allowed_sources).size) errors.push('Minimum locations exceeds the approved source list');
   if (p.minimum_locations_per_item > p.max_search_actions_per_item) errors.push('Search budget is below minimum locations');
   if (kind === 'source-check-v1') {
     if (!unique(request.claims.map(c => c.claim_id))) errors.push('Duplicate claim IDs');
@@ -49,7 +50,12 @@ export function validateResult(kind, request, result, approvedDigest, { producti
     const refs = [...row.evidence_ids, ...(row.alternatives || []).flatMap(a => a.evidence_ids)];
     if (refs.some(id => !sources.has(id))) errors.push('Unknown evidence reference');
     if (row.effort.length > request.source_policy.max_search_actions_per_item) errors.push('Search budget exceeded');
-    if (new Set(row.effort.map(e => e.location)).size < request.source_policy.minimum_locations_per_item && !row.effort.some(e => e.outcome === 'ACCESS_BLOCKED')) errors.push('Minimum search effort not documented');
+    if (row.effort.some(e => !request.source_policy.allowed_sources.includes(e.location))) errors.push('Effort location is outside the approved URL list');
+    // A blocked URL counts only for that URL, never for other required locations.
+    if (new Set(row.effort.map(e => e.location)).size < request.source_policy.minimum_locations_per_item) errors.push('Minimum search effort not documented');
+    for (const effort of row.effort.filter(e => e.outcome !== 'ACCESS_BLOCKED')) {
+      if (!refs.some(id => result.sources.some(s => s.source_id === id && s.url === effort.location))) errors.push('Inspected effort needs linked source evidence');
+    }
     if (claimMode) {
       if (row.original_claim !== request.claims.find(c => c.claim_id === row.claim_id)?.text) errors.push('Original claim changed');
       if (row.version_scope !== request.source_policy.version_scope || row.as_of !== request.source_policy.as_of) errors.push('Scope changed');
