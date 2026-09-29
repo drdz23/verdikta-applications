@@ -945,7 +945,7 @@ function Analytics() {
     labels: gasTrend.map(d => (d.daysAgo === 0 ? 'now' : `${d.daysAgo}d`)),
     datasets: [
       { label: 'Commit', data: gasTrend.map(d => d.avgGasCommit), backgroundColor: GAS_COLORS.commit },
-      { label: 'Reveal (all)', data: gasTrend.map(d => d.avgGasReveal), backgroundColor: GAS_COLORS.reveal }
+      { label: 'Reveal (all: normal + finalizing)', data: gasTrend.map(d => d.avgGasReveal), backgroundColor: GAS_COLORS.reveal }
     ]
   } : null;
   const gasChartOptions = {
@@ -1299,7 +1299,7 @@ function Analytics() {
                 </table>
               </div>
               <p className="health-footnote">
-                Gas units (price-independent across runs). A <em>finalizing reveal</em> is the response that also runs the aggregation (one per completed round), costing far more than a normal one. The <strong>Reveal</strong> and <strong>Finalizing</strong> columns show them separately; the bar chart and avg cost <strong>blend both</strong> (≈¼ of reveals are finalizing) for the true per-reveal figure.
+                Gas units (price-independent across runs). A <em>finalizing reveal</em> is the response that also runs the aggregation (one per completed round), costing far more than a normal one. The <strong>Reveal</strong> and <strong>Finalizing</strong> columns show them separately. The bar chart&rsquo;s <strong>Reveal (all)</strong> series and the <strong>Avg cost</strong> column <strong>blend both</strong> — normal and finalizing reveals together (≈¼ of reveals are finalizing) — for the true per-reveal figure, so the chart&rsquo;s reveal bar sits above the Reveal column&rsquo;s median. The chart is also a network-wide daily <em>average</em> across all operators, not a per-operator median.
                 {gasFinal ? <> <strong>Highest finalizing reveal seen: {fmtGas(gasFinal.gasUsed.max)} gas</strong> — a node's Chainlink job-spec <code>gasLimit</code> must exceed this to avoid an out-of-gas failure during finalization.</> : ''}
                 {gasScan?.partial ? ' Receipt backfill incomplete — some gas data is still being collected; refresh shortly.' : ''}
               </p>
