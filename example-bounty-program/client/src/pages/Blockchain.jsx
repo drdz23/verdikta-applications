@@ -471,6 +471,28 @@ def submit_work(bounty_id, hunter_cid):
     print('Evaluation started!')
     return submission_id`;
 
+  // Foundry's `cast` decodes the getBounty tuple itself — no library code, no ABI
+  // file, and no hand-counting of byte offsets (the struct contains a dynamic
+  // string, so word-scanning decoders misread every field after it).
+  const castExample = `# Read a bounty with Foundry (cast) — the tuple is decoded for you
+ESCROW=${activeContract.bountyEscrow || '<BountyEscrow address>'}
+RPC=${activeContract.rpcUrl || '<rpc url>'}
+
+cast call $ESCROW \\
+  "getBounty(uint256)((address,string,uint64,uint8,uint256,uint256,uint64,uint8,address,uint256,address,uint256,uint256,uint64,(uint256,uint256,uint256,uint256)))" \\
+  <bountyId> --rpc-url $RPC
+
+# Field order: creator, evaluationCid, requestedClass, threshold, payoutWei, createdAt,
+# submissionDeadline, status (0 Open, 1 Awarded, 2 Closed), winner, submissions, targetHunter,
+# creatorDeterminationPayment, arbiterDeterminationPayment, creatorAssessmentWindowSize,
+# oracle (maxOracleFee, alpha, estimatedBaseCost, maxFeeBasedScaling)
+
+# Lens views are served at the same address (merged ABI: /api/abi/BountyEscrow.json)
+cast call $ESCROW "getEffectiveBountyStatus(uint256)(string)" <bountyId> --rpc-url $RPC
+cast call $ESCROW "nextAction(uint256,uint256)(string)" <bountyId> <submissionId> --rpc-url $RPC
+cast call $ESCROW "requiredPrepay(uint256)(uint256)" <bountyId> --rpc-url $RPC
+cast call $ESCROW "prepareCutoff(uint256)(uint256)" <bountyId> --rpc-url $RPC`;
+
   const ipfsStructure = `# Evaluation Package (evaluationCid)
 # Format: ZIP archive uploaded to IPFS
 evaluation-package.zip
@@ -1029,6 +1051,19 @@ submission-package.zip
             </button>
           </div>
           <pre><code>{web3pyExample}</code></pre>
+        </div>
+
+        <div className="code-block" style={{ marginTop: '1.5rem' }}>
+          <div className="code-header">
+            <span>Foundry cast (shell, no library code)</span>
+            <button
+              className="btn-icon"
+              onClick={() => copyToClipboard(castExample, 'cast')}
+            >
+              {copiedCode === 'cast' ? <Check size={16} /> : <Copy size={16} />}
+            </button>
+          </div>
+          <pre><code>{castExample}</code></pre>
         </div>
       </section>
 
