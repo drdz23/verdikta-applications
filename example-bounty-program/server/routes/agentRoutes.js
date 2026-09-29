@@ -56,6 +56,28 @@ local work or ask for scope/sharing approval. Supplier choice must be explicit.
 Output is DRAFT_NOT_QUOTED; price and availability remain UNKNOWN.
 Commissioning requires separate owner authorization.
 
+## Create API compatibility
+POST /api/jobs/create accepts positive decimal or scientific-notation ETH amounts,
+including "1e-3", "5e-05" and "+1". Hex amounts, fractional wei, invalid checksums
+and out-of-range payments return 400 before upload/storage. Use strings for exact
+18-decimal amounts. bountyAmount in job responses remains a JSON number for
+compatibility; bountyAmountWei is the exact integer wei string for transactions.
+Older numeric-only jobs gain the exact field on chain sync; do not use the display
+number for precision-sensitive accounting or signing.
+Fractional submissionWindowHours and creatorAssessmentWindowHours round to the
+nearest second. Exact integer creatorAssessmentWindowSeconds takes precedence
+when supplied. Storage and calldata use the same rounded submission deadline.
+Both split payments are required if either payment is supplied or a positive
+assessment window is requested. Incomplete settings return 400 instead of silently
+removing the window. With no window, both payments must equal bountyAmount;
+mismatches return 400 rather than ignoring payment terms. With a window, funding
+is max(creatorDeterminationPayment, arbiterDeterminationPayment). The submission
+duration must exceed the assessment window by more than 2 seconds.
+Legacy no-procurementMode requests retain the error labels "Invalid bountyAmount"
+and "Invalid targetHunter address". New configuration errors use "Invalid bounty
+window" or "Invalid bounty payment"; explicit procurement errors use "Invalid
+procurement intent". The details field explains the rejected setting.
+
 ## Quick Start (authorized transaction path)
 Base URL: ${base}/api
 
@@ -734,6 +756,15 @@ router.get('/api/docs', (req, res) => {
         ownerAddress: 'string (0x... Ethereum address)',
         description: 'string (optional)'
       }
+    },
+    creationInputContract: {
+      endpoint: 'POST /api/jobs/create',
+      amounts: 'Positive decimal or scientific-notation ETH (e.g. 1e-3, 5e-05, +1); strings preserve 18-decimal precision. Hex, fractional wei, zero/negative and payments >= 2^128 wei return 400 before upload/storage.',
+      amountResponse: 'bountyAmount remains a numeric ETH display field. bountyAmountWei is an exact integer wei string for signing/accounting; older numeric-only records acquire it on chain sync. Never convert the display number back to wei when the exact field is present.',
+      windows: 'submissionWindowHours (default 24) and creatorAssessmentWindowHours (default 0) round to nearest integer seconds. Optional integer creatorAssessmentWindowSeconds takes precedence. The same rounded duration drives stored and encoded deadlines; submission duration must exceed assessment window by more than 2 seconds.',
+      payments: 'Both creatorDeterminationPayment and arbiterDeterminationPayment are required when either is supplied or a positive window is requested. Incomplete settings return 400. No-window split payments must both equal bountyAmount (mismatches return 400, not ignored). Windowed funding uses their maximum.',
+      errors: { legacyInvalidAmount: 'Invalid bountyAmount', legacyInvalidTarget: 'Invalid targetHunter address', window: 'Invalid bounty window', payments: 'Invalid bounty payment', explicitProcurement: 'Invalid procurement intent' },
+      errorNote: 'Legacy labels apply when procurementMode is omitted. All validation errors include details. Checksum-invalid mixed-case targets and dead window configurations are intentionally rejected before mutation.'
     },
     calldataResponseShape: {
       description: 'Every endpoint that encodes on-chain calldata returns this shape. Sign and broadcast `transaction` as-is.',

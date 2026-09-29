@@ -11,6 +11,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const logger = require('./logger');
+const { bountyAmountFields } = require('./bountyAmounts');
 const { config } = require('../config');
 
 /**
@@ -25,6 +26,15 @@ function normalizeJobs(jobs) {
     if (j.status !== uc) {
       j.status = uc;
       changed = true;
+    }
+    // Heal records created by review builds without losing their exact amount.
+    // Legacy numeric records keep their display value until authoritative chain sync.
+    if (typeof j.bountyAmount === 'string' || j.bountyAmountWei != null) {
+      const amounts = bountyAmountFields(j);
+      if (j.bountyAmount !== amounts.bountyAmount || j.bountyAmountWei !== amounts.bountyAmountWei) {
+        Object.assign(j, amounts);
+        changed = true;
+      }
     }
     // Migrate primaryCid -> evaluationCid
     if (j.primaryCid) {

@@ -174,3 +174,17 @@ describe('jobs.json concurrency / orphan-race', () => {
     expect(result.jobs).toHaveLength(1);
   });
 });
+
+it('legacy and review-build jobs list numeric amounts while preserving exact wei', async()=>{
+ mockStorageData={jobs:[
+  {jobId:0,status:'OPEN',bountyAmount:0.001},
+  {jobId:1,status:'OPEN',bountyAmount:'0.123456789012345678'},
+  {jobId:2,status:'OPEN',bountyAmount:1,bountyAmountWei:'123456789012345678'}
+ ],nextId:3};
+ const listed=await jobStorage.listJobs({currentContractOnly:false,includeOrphans:true});
+ expect(listed.every(j=>typeof j.bountyAmount==='number')).toBe(true);
+ expect(listed.find(j=>j.jobId===1).bountyAmountWei).toBe('123456789012345678');
+ expect(listed.find(j=>j.jobId===2).bountyAmount).toBe(0.12345678901234568);
+ const detail=await jobStorage.getJob(1);expect(detail.bountyAmountWei).toBe('123456789012345678');expect(typeof detail.bountyAmount).toBe('number');
+ const stored=await jobStorage.readStorage();expect(stored.jobs.find(j=>j.jobId===1).bountyAmountWei).toBe('123456789012345678');
+});

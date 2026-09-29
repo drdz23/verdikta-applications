@@ -15,6 +15,7 @@
  */
 
 const logger = require('./logger');
+const { bountyAmountFields } = require('./bountyAmounts');
 const jobStorage = require('./jobStorage');
 const { getContractService } = require('./contractService');
 const { config } = require('../config');
@@ -237,7 +238,11 @@ function applyChainBountyFields(localJob, chainBounty) {
   if (chainBounty.evaluationCid) set('evaluationCid', chainBounty.evaluationCid);
   if (chainBounty.classId != null) set('classId', Number(chainBounty.classId));
   if (chainBounty.threshold != null) set('threshold', Number(chainBounty.threshold));
-  if (chainBounty.bountyAmount != null) set('bountyAmount', String(chainBounty.bountyAmount));
+  if (chainBounty.bountyAmountWei != null || chainBounty.bountyAmount != null) {
+    const amounts = bountyAmountFields(chainBounty);
+    set('bountyAmount', amounts.bountyAmount);
+    set('bountyAmountWei', amounts.bountyAmountWei);
+  }
   if (chainBounty.submissionCloseTime != null) set('submissionCloseTime', Number(chainBounty.submissionCloseTime));
   if (chainBounty.createdAt != null) {
     // Don't clobber the local createdAt if it already exists; chain createdAt
@@ -1540,7 +1545,7 @@ class SyncService {
       description,
       workProductType,
       creator: bounty.creator,
-      bountyAmount: String(bounty.bountyAmount),
+      ...bountyAmountFields(bounty),
       bountyAmountUSD: 0,
       threshold: bounty.threshold,
       evaluationCid: bounty.evaluationCid,

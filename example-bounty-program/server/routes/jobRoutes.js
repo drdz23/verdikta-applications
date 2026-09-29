@@ -4,6 +4,7 @@
  */
 
 const { ethers } = require('ethers');
+const { bountyAmountWei, bountyAmountFields } = require('../utils/bountyAmounts');
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -125,7 +126,7 @@ function jobOracleSettings(job) {
  */
 function buildCreateBountyTx(job) {
   const oracle = jobOracleSettings(job);
-  const amountWei = ethers.parseEther(String(job.bountyAmount));
+  const amountWei = bountyAmountWei(job);
   const windowed = Number(job.creatorAssessmentWindowSize || 0) > 0 && job.creatorDeterminationPayment != null;
   const creatorPayWei = windowed ? ethers.parseEther(String(job.creatorDeterminationPayment)) : amountWei;
   const arbiterPayWei = windowed ? ethers.parseEther(String(job.arbiterDeterminationPayment)) : amountWei;
@@ -396,10 +397,15 @@ router.post('/create', async (req, res) => {
       return res.status(400).json({ error: 'Invalid creator address', details: 'Must be a valid Ethereum address' });
     }
     const procurementError = validateProcurement(req.body?.procurementMode, targetHunter);
-    if (procurementError) return res.status(400).json({ error: 'Invalid procurement intent', details: procurementError });
+    if (procurementError) return res.status(400).json({ error: req.body?.procurementMode == null ? 'Invalid targetHunter address' : 'Invalid procurement intent', details: procurementError });
     let payments;
     try { payments = normalizeBountyPayments(req.body); }
-    catch (error) { return res.status(400).json({ error: error.code === 'INVALID_BOUNTY_WINDOW' ? 'Invalid bounty window' : 'Invalid bounty payment', details: error.message }); }
+    catch (error) {
+      const label = error.code === 'INVALID_BOUNTY_WINDOW' ? 'Invalid bounty window'
+        : error.field === 'bountyAmount' && req.body?.procurementMode == null ? 'Invalid bountyAmount'
+        : 'Invalid bounty payment';
+      return res.status(400).json({ error: label, details: error.message });
+    }
     const normalizedTarget = !targetHunter || ethers.getAddress(targetHunter) === ethers.ZeroAddress ? null : ethers.getAddress(targetHunter);
     if (!Number.isFinite(Number(threshold)) || Number(threshold) < 0 || Number(threshold) > 100) {
       return res.status(400).json({ error: 'Invalid threshold', details: 'Threshold must be between 0 and 100' });
@@ -618,7 +624,7 @@ router.post('/create', async (req, res) => {
             jobId: existing.jobId,
             title: existing.title,
             description: existing.description,
-            bountyAmount: existing.bountyAmount,
+            ...bountyAmountFields(existing),
             bountyAmountUSD: existing.bountyAmountUSD,
             threshold: existing.threshold,
             rubricCid: existing.rubricCid,
@@ -638,7 +644,7 @@ router.post('/create', async (req, res) => {
     // ---- Times ----
     const now = Math.floor(Date.now() / 1000);
     const submissionOpenTime = now;
-    const submissionCloseTime = now + (Number(submissionWindowHours) * 3600);
+    const submissionCloseTime = now + payments.submissionWindowSeconds;
 
     // ---- Persist job ----
     const job = await jobStorage.createJob({
@@ -672,6 +678,7 @@ router.post('/create', async (req, res) => {
         title: job.title,
         description: job.description,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         bountyAmountUSD: job.bountyAmountUSD,
         threshold: job.threshold,
         rubricCid: job.rubricCid,
@@ -986,6 +993,7 @@ router.get('/admin/expired', async (req, res) => {
         title: job.title,
         creator: job.creator,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         deadline,
         expiredMinutesAgo: Math.floor((nowSeconds - deadline) / 60),
         localStatus: job.status,
@@ -1120,6 +1128,7 @@ router.get('/mine/action-required', async (req, res) => {
         jobId: job.jobId,
         title: job.title,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         deadline,
         expiredMinutesAgo: Math.floor((nowSeconds - deadline) / 60),
         canClose: false,
@@ -2823,6 +2832,7 @@ router.get('/', async (req, res) => {
         description: job.description,
         workProductType: job.workProductType,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         bountyAmountUSD: job.bountyAmountUSD,
         threshold: job.threshold,
         classId: job.classId,
