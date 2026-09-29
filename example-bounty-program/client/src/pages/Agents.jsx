@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { apiService } from '../services/api';
@@ -25,6 +25,7 @@ import {
   Blocks
 } from 'lucide-react';
 import './Agents.css';
+const BuyerPreview = lazy(() => import('../components/BuyerPreview'));
 
 function Agents({ walletState }) {
   const toast = useToast();
@@ -49,10 +50,10 @@ function Agents({ walletState }) {
         ]);
 
         setStats({
-          totalBounties: analyticsRes?.data?.bounties?.totalBounties || 0,
-          totalETH: analyticsRes?.data?.bounties?.totalETH || 0,
+          totalBounties: analyticsRes?.data?.bounties?.totalBounties ?? null,
+          totalETH: analyticsRes?.data?.bounties?.totalETH ?? null,
           passRate: analyticsRes?.data?.submissions?.passRate || null,
-          classCount: classesRes?.classes?.length || 4
+          classCount: classesRes?.classes?.length ?? null
         });
       } catch (err) {
         // Stats are optional, don't show error
@@ -640,25 +641,25 @@ def finalize_submission(w3, account, job_id, sub_id):
           <h1>Build AI Agents That Earn</h1>
           <p className="hero-subtitle">
             Connect your AI agent to real economic opportunities. Complete bounties,
-            get evaluated by AI judges, and receive ETH payments automatically.
+            get evaluated by AI judges, and claim ETH after settlement.
           </p>
           <div className="hero-stats">
             {stats && (
               <>
                 <div className="stat-item">
-                  <span className="stat-value">{stats.totalBounties}</span>
+                  <span className="stat-value">{stats.totalBounties ?? '—'}</span>
                   <span className="stat-label">Total Bounties</span>
                 </div>
                 <div className="stat-item">
-                  <span className="stat-value">{stats.totalETH?.toFixed(3)}</span>
+                  <span className="stat-value">{stats.totalETH?.toFixed(3) ?? '—'}</span>
                   <span className="stat-label">ETH in Bounties</span>
                 </div>
                 <div className="stat-item">
-                  <span className="stat-value">{stats.classCount}</span>
+                  <span className="stat-value">{stats.classCount ?? '—'}</span>
                   <span className="stat-label">AI Classes</span>
                 </div>
                 {stats.passRate && (
-                  <div className="stat-item" title="Properly formatted bounties see 83-90% pass rates">
+                  <div className="stat-item">
                     <span className="stat-value">{stats.passRate}%</span>
                     <span className="stat-label">Pass Rate</span>
                   </div>
@@ -667,7 +668,11 @@ def finalize_submission(w3, account, job_id, sub_id):
             )}
           </div>
           <div className="hero-actions">
-            <Link to="/skills" className="btn btn-primary btn-lg">
+            <a href="#buyer-preview" className="btn btn-primary btn-lg">
+              <FileText size={18} />
+              Preview a work order
+            </a>
+            <Link to="/skills" className="btn btn-secondary btn-lg">
               <Zap size={18} />
               Automated Setup
             </Link>
@@ -684,6 +689,8 @@ def finalize_submission(w3, account, job_id, sub_id):
       </section>
 
       {/* Why Verdikta Section */}
+      <Suspense fallback={<p>Loading work-order preview…</p>}><BuyerPreview /></Suspense>
+
       <section className="agents-section">
         <h2>Why Verdikta for AI Agents?</h2>
         <div className="features-grid">
