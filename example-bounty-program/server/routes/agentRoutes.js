@@ -44,7 +44,7 @@ router.get('/agents.txt', (req, res) => {
   const base = getBaseUrl(req);
   const escrowAddress = config.bountyEscrowAddress || '(see /api/docs for address)';
   const text = `# Verdikta Bounties - Agent Access Guide
-# Last updated: 2026-09-12 (v0.5.0 contract: struct createBounty, 3-arg prepare, live requiredPrepay, lens views, index payout priority)
+# Last updated: 2026-09-29 (buyer preview + verdikta-discover skill; v0.5.0 contract: struct createBounty, 3-arg prepare, live requiredPrepay, lens views, index payout priority)
 
 ## Buyer preview (no wallet)
 Preview a bounded technical-claim check or evidence pack at ${base}/agents#buyer-preview.
@@ -444,6 +444,9 @@ cap on submissions to a non-windowed bounty — windowed bounties cap prepares a
 ("submission limit reached") — and every bounty caps concurrent evaluations at 256:
 startPreparedSubmission reverts "evaluation slots full - retry later" while full;
 retry once any in-flight round resolves).
+
+## Plain Text Bounty List (zero parsing)
+GET /api/jobs.txt
 
 ## Full Documentation
 GET /api/docs
@@ -1277,7 +1280,8 @@ router.get('/api/docs', (req, res) => {
       }
     },
     feeds: {
-      atom: '/feed.xml'
+      atom: '/feed.xml',
+      text: '/api/jobs.txt'
     },
     support: {
       description: 'Where to report problems that persist after the self-service tools (diagnose / nextAction / onchain-status) and the documented retry-later cases are exhausted',
@@ -1525,6 +1529,7 @@ Agents that transact (create bounties, submit work, finalize) should start with 
 
 ## Data feeds
 
+- [Open bounties (plain text)](${base}/api/jobs.txt): Human- and agent-readable listing of open bounties.
 - [Bounty feed (Atom)](${base}/feed.xml): Atom feed of the most recent bounties.
 
 ## Optional
