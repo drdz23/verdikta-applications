@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import { Contract } from 'ethers';
-import { abi, deployments, verifyDeployment, verifyTransaction, uint } from './_transaction-guards.js';
+import { abi, deployments, verifyDeployment, verifyTransaction, verifySignedTransaction, uint } from './_transaction-guards.js';
 const approvedProviders = new WeakMap();
 let reservedWei = 0n;
 export async function preflightDeployment(network, provider, baseUrl) {
@@ -22,7 +22,7 @@ export async function loadSpendPolicy() {
   if (!BigInt(p.maxGasLimit) || !BigInt(p.maxFeePerGasWei) || BigInt(p.maxPriorityFeePerGasWei) > BigInt(p.maxFeePerGasWei)) throw new Error('Invalid gas policy');
   return Object.fromEntries(['maxValueWei', 'maxTotalWei', 'maxGasLimit', 'maxFeePerGasWei', 'maxPriorityFeePerGasWei'].map(key => [key, p[key]]));
 }
-export async function execute(signer, method, tx, { network, args, exactValueWei = 0n, policy, dryRun = false, confirm, onBroadcast, onBeforeBroadcast, review = [] }) {
+export async function execute(signer, method, tx, { network, args, exactValueWei = 0n, policy, dryRun = false, confirm, onBroadcast, onSigned, review = [] }) {
   if (approvedProviders.get(signer.provider)?.network !== network) throw new Error('Deployment preflight required before signing');
   // Re-check live chain/code/docs even for the second transaction of a lifecycle.
   await preflightDeployment(network, signer.provider, deployments[network].docsUrl.replace(/\/api\/docs$/, ''));
@@ -41,11 +41,17 @@ export async function execute(signer, method, tx, { network, args, exactValueWei
   console.log(JSON.stringify({ method, review, ...base, gasLimit, maxFeePerGas, maxPriorityFeePerGas, maxExecutionCostWei: reserve, policy }, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2));
   if (dryRun) return null;
   await confirm([...review, 'Review exact destination, chain, value, calldata and caps above. Base L1 data fees are additional; keep a funded reserve.']);
-  if (onBeforeBroadcast) await onBeforeBroadcast();
+  const populated = await signer.populateTransaction({ ...base, type: 2, gasLimit, maxFeePerGas, maxPriorityFeePerGas });
+  const rawTransaction = await signer.signTransaction(populated);
+  const signed = verifySignedTransaction(rawTransaction, { network, method, args, value: exactValueWei }, await signer.getAddress(), policy);
+  // Save recoverable signed bytes BEFORE transport, including insufficient-funds errors.
+  if (onSigned) await onSigned({ rawTransaction, hash: signed.hash });
   reservedWei += reserve;
-  const sent = await signer.sendTransaction({ ...base, gasLimit, maxFeePerGas, maxPriorityFeePerGas });
-  // Print hash immediately; never retry a broadcast automatically.
-  console.log(`Broadcast transaction ${sent.hash}; retain this hash for receipt recovery. Do not recreate the job.`);
+  console.log(`Signed transaction ${signed.hash}; retain this hash and recovery state. Do not recreate the job.`);
+  let sent;
+  try { sent = await signer.provider.broadcastTransaction(rawTransaction); }
+  catch (error) { throw new Error(`Broadcast uncertain for ${signed.hash}; ${onSigned ? 'use saved state to resume the same transaction' : 'retain this hash and reconcile chain state before retrying'}: ${error.message}`, { cause: error }); }
+  if (sent.hash !== signed.hash) throw new Error(`RPC returned a different hash; recover ${signed.hash} from saved state`);
   if (onBroadcast) await onBroadcast(sent.hash);
   const receipt = await sent.wait();
   if (receipt?.status !== 1) throw new Error(`Transaction not confirmed successful: ${sent.hash}`);

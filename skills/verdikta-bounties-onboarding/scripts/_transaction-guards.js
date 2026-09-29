@@ -1,5 +1,5 @@
 // Pure transaction validation. No wallet, environment, API, or signing imports.
-import { Interface, getAddress, ZeroAddress, parseEther, keccak256 } from 'ethers';
+import { Interface, getAddress, ZeroAddress, parseEther, keccak256, Transaction } from 'ethers';
 import abi from './bounty-escrow.abi.json' with { type: 'json' };
 import deployments from './deployments.json' with { type: 'json' };
 export { abi, deployments };
@@ -42,7 +42,7 @@ export function creationTerms(config) {
   if (window % 3600n !== 0n) throw new Error('Creator assessment window must be whole hours');
   return { params: { requestedClass, threshold, targetHunter, creatorDeterminationPayment: creator, arbiterDeterminationPayment: arbiter, creatorAssessmentWindowSize: window, oracle }, value };
 }
-export function bindCreation(config, response, { recovery = false } = {}) {
+export function bindCreation(config, response, { recovery = false, apiCreatedAt } = {}) {
   const { params, value } = creationTerms(config);
   const job = response.job;
   if (!recovery && (job?.onChain || job?.txHash || response.message?.startsWith('Reusing existing job'))) throw new Error('Existing creation detected; reconcile its identity instead of funding a duplicate');
@@ -53,9 +53,9 @@ export function bindCreation(config, response, { recovery = false } = {}) {
   if (deadline - opened !== BigInt(Number(config.submissionWindowHours) * 3600)) throw new Error('Server deadline window drift');
   if (!recovery) {
     const now = BigInt(Math.floor(Date.now() / 1000));
-    const drift = deadline - (now + BigInt(Number(config.submissionWindowHours) * 3600));
-    if (deadline <= now) throw new Error('Server deadline expired');
-    if (drift < -900n || drift > 900n) throw new Error('Server deadline differs from the local clock by more than 15 minutes');
+    const drift = opened - (apiCreatedAt == null ? now : uint(apiCreatedAt, 'local API creation time'));
+    if (deadline - now <= params.creatorAssessmentWindowSize + 302n) throw new Error('Server deadline leaves less than five minutes for submissions before the assessment window');
+    if (drift < -900n || drift > 900n) throw new Error('Server open time differs from the local clock at API creation by more than 15 minutes');
   }
   if (Number(job.threshold) !== Number(config.threshold)) throw new Error('Server threshold drift');
   return { params: { ...params, evaluationCid: job.evaluationCid, submissionDeadline: deadline }, value, transaction: response.onChain.transaction };
@@ -92,4 +92,18 @@ export function verifyCreatedBounty(bounty, expected, creator) {
       if (getAddress(bounty[key]) !== getAddress(value)) throw new Error('Created bounty target mismatch');
     } else if (typeof value === 'bigint' ? BigInt(bounty[key]) !== value : bounty[key] !== value) throw new Error(`Created bounty ${key} mismatch`);
   }
+}
+
+// Used both immediately after local signing and before rebroadcasting saved bytes.
+export function verifySignedTransaction(raw, expected, creator, policy, hash) {
+  const tx = Transaction.from(raw);
+  if (!tx.isSigned() || getAddress(tx.from) !== getAddress(creator)) throw new Error('Saved transaction has wrong creator or no signature');
+  if (hash && tx.hash !== hash) throw new Error('Saved transaction hash mismatch');
+  verifyTransaction(tx, { ...expected, maxValueWei: policy.maxValueWei });
+  if (tx.type !== 2 || tx.gasLimit > uint(policy.maxGasLimit, 'gas cap') ||
+      tx.maxFeePerGas > uint(policy.maxFeePerGasWei, 'fee cap') ||
+      tx.maxPriorityFeePerGas > uint(policy.maxPriorityFeePerGasWei, 'priority cap') ||
+      tx.maxPriorityFeePerGas > tx.maxFeePerGas || tx.accessList?.length) throw new Error('Saved transaction exceeds gas/fee policy or changes transaction type');
+  if (tx.value + tx.gasLimit * tx.maxFeePerGas > uint(policy.maxTotalWei, 'total cap')) throw new Error('Saved transaction exceeds total cap');
+  return tx;
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keccak256 } from 'ethers';
+import { keccak256, Wallet, Transaction } from 'ethers';
 import { deployments, iface } from '../_transaction-guards.js';
 import { execute, preflightDeployment } from '../_executor.js';
 const d=deployments.base;
@@ -9,7 +9,9 @@ const policy={maxValueWei:'1000',maxTotalWei:'1000000',maxGasLimit:'200',maxFeeP
 function setup() {
   let sent=0, confirmed=0;
   const provider={getNetwork:async()=>({chainId:8453n}),getCode:async()=> '0x1234'};
-  const signer={provider,estimateGas:async()=>100n,sendTransaction:async()=>{sent++;return {hash:'0x'+'1'.repeat(64),wait:async()=>({status:1,logs:[]})};}};
+  const wallet=new Wallet('0x'+'11'.repeat(32)); // Synthetic offline test key; never funded.
+  provider.broadcastTransaction=async raw=>{sent++;return {hash:Transaction.from(raw).hash,wait:async()=>({status:1,logs:[]})};};
+  const signer={provider,estimateGas:async()=>100n,populateTransaction:async tx=>({...tx,nonce:0}),signTransaction:tx=>wallet.signTransaction(tx),getAddress:async()=>wallet.address};
   const tx={to:d.address,chainId:8453,value:'0',data:iface.encodeFunctionData('finalizeSubmission',[1,2])};
   return {provider,signer,tx,opts:{network:'base',args:[1,2],policy,confirm:async()=>{confirmed++;}},counts:()=>({sent,confirmed})};
 }
@@ -53,5 +55,19 @@ test('live prepay drift and cumulative caps block a second transaction',async()=
     await execute(f.signer,'finalizeSubmission',f.tx,opts);
     await assert.rejects(execute(f.signer,'finalizeSubmission',f.tx,opts),/Run total/);
     assert.equal(f.counts().sent,1);
+  } finally {d.codeHash=oldHash;globalThis.fetch=oldFetch;}
+});
+
+test('signed bytes persist before transport failure; persistence failure prevents broadcast',async()=>{
+  const oldHash=d.codeHash,oldFetch=globalThis.fetch;d.codeHash=keccak256('0x1234');
+  globalThis.fetch=async()=>new Response(JSON.stringify(docs),{headers:{'content-type':'application/json'}});
+  try {
+    const f=setup();await preflightDeployment('base',f.provider,d.docsUrl.replace('/api/docs',''));
+    let saved,attempts=0;
+    f.provider.broadcastTransaction=async raw=>{attempts++;assert.equal(raw,saved.rawTransaction);assert.equal(Transaction.from(raw).hash,saved.hash);throw Error('insufficient gas funds');};
+    await assert.rejects(execute(f.signer,'finalizeSubmission',f.tx,{...f.opts,onSigned:async s=>{saved=s;}}),/Broadcast uncertain/);
+    assert.equal(attempts,1);assert.ok(saved.hash);
+    await assert.rejects(execute(f.signer,'finalizeSubmission',f.tx,{...f.opts,onSigned:async()=>{throw Error('disk full');}}),/disk full/);
+    assert.equal(attempts,1);
   } finally {d.codeHash=oldHash;globalThis.fetch=oldFetch;}
 });

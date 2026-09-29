@@ -43,3 +43,24 @@ test('chain field sync preserves the exact ETH decimal string',()=>{
  const job={};const amount='0.123456789012345678';
  applyChainBountyFields(job,{bountyAmount:amount});expect(job.bountyAmount).toBe(amount);
 });
+
+test('UI approval-window payload funds the larger split payment',async()=>{
+ const res=await request(app).post('/jobs/create').send({...body,bountyAmount:0.001,creatorDeterminationPayment:0.002,arbiterDeterminationPayment:0.001,creatorAssessmentWindowHours:1,submissionWindowHours:24});
+ expect(res.status).toBe(200);expect(res.body.onChain.transaction.value).toBe('2000000000000000');
+ expect(storage.createJob).toHaveBeenCalledWith(expect.objectContaining({bountyAmount:'0.002',creatorDeterminationPayment:'0.002',arbiterDeterminationPayment:'0.001',creatorAssessmentWindowSize:3600}));
+});
+test.each([1860,3900,7500])('exact integer-second assessment window %p survives API storage and encoding',async seconds=>{
+ const res=await request(app).post('/jobs/create').send({...body,creatorDeterminationPayment:0.001,arbiterDeterminationPayment:0.001,creatorAssessmentWindowSeconds:seconds});
+ expect(res.status).toBe(200);expect(storage.createJob).toHaveBeenCalledWith(expect.objectContaining({creatorAssessmentWindowSize:seconds}));
+ const {Interface}=require('ethers');
+ const abi=require('../../../skills/verdikta-bounties-onboarding/scripts/bounty-escrow.abi.json');
+ expect(new Interface(abi).decodeFunctionData('createBounty',res.body.onChain.transaction.data)[0].creatorAssessmentWindowSize).toBe(BigInt(seconds));
+});
+test('invalid window is labelled specifically before pinning',async()=>{
+ const res=await request(app).post('/jobs/create').send({...body,creatorDeterminationPayment:0.002,arbiterDeterminationPayment:0.001,creatorAssessmentWindowHours:1,submissionWindowHours:1});
+ expect(res.status).toBe(400);expect(res.body.error).toBe('Invalid bounty window');expect(upload).not.toHaveBeenCalled();expect(storage.createJob).not.toHaveBeenCalled();
+});
+test('legacy hours-only payload retains its no-window meaning',async()=>{
+ const res=await request(app).post('/jobs/create').send({...body,creatorAssessmentWindowHours:1});
+ expect(res.status).toBe(200);expect(storage.createJob).toHaveBeenCalledWith(expect.objectContaining({creatorAssessmentWindowSize:0}));
+});

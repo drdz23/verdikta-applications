@@ -429,12 +429,17 @@ function normalizeBountyPayments(body) {
   const bounty = amount(body.bountyAmount, 'bountyAmount');
   const creator = amount(body.creatorDeterminationPayment ?? body.bountyAmount, 'creatorDeterminationPayment');
   const arbiter = amount(body.arbiterDeterminationPayment ?? body.bountyAmount, 'arbiterDeterminationPayment');
-  const seconds = Number(body.creatorAssessmentWindowHours ?? 0) * 3600;
+  // Preserve legacy behavior: an hours field alone does not opt into split payments.
+  const split = body.creatorDeterminationPayment != null && body.arbiterDeterminationPayment != null;
+  const seconds = split ? (body.creatorAssessmentWindowSeconds != null ? Number(body.creatorAssessmentWindowSeconds) : Number(body.creatorAssessmentWindowHours ?? 0) * 3600) : 0;
   const duration = Number(body.submissionWindowHours ?? 24) * 3600;
-  if (!Number.isSafeInteger(seconds) || seconds < 0 || !Number.isSafeInteger(duration) || duration <= seconds + 2) throw new Error('Invalid assessment/submission window');
+  if (!Number.isSafeInteger(seconds) || seconds < 0 || !Number.isSafeInteger(duration) || duration <= seconds + 2) {
+    throw Object.assign(new Error('Submission window must exceed the creator assessment window by more than 2 seconds; use integer assessment seconds'), { code: 'INVALID_BOUNTY_WINDOW' });
+  }
   if (!seconds && creator !== arbiter) throw new Error('No-window determination payments must be equal');
-  if (bounty !== (creator > arbiter ? creator : arbiter)) throw new Error('bountyAmount must equal the maximum determination payment');
-  return { bountyAmount: ethers.formatEther(bounty), creatorDeterminationPayment: ethers.formatEther(creator), arbiterDeterminationPayment: ethers.formatEther(arbiter), creatorAssessmentWindowSize: seconds };
+  const funded = creator > arbiter ? creator : arbiter;
+  if (!seconds && bounty !== funded) throw new Error('bountyAmount must equal the determination payment');
+  return { bountyAmount: ethers.formatEther(funded), creatorDeterminationPayment: ethers.formatEther(creator), arbiterDeterminationPayment: ethers.formatEther(arbiter), creatorAssessmentWindowSize: seconds };
 }
 
 module.exports = {

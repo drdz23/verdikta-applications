@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Read-only onboarding smoke check: list open jobs, never submit or sign.
-import { fileURLToPath } from 'node:url';
+import { isMain } from './_cli.js';
 export async function listOpenJobs({baseUrl, apiKey, fetchApi = globalThis.fetch}) {
   if (!baseUrl || !apiKey) throw new Error('Configured API origin and identity required; run authorized onboarding first');
   const url = new URL(`${baseUrl.replace(/\/+$/, '')}/api/jobs`);
@@ -12,7 +12,7 @@ export async function listOpenJobs({baseUrl, apiKey, fetchApi = globalThis.fetch
   for (const job of data.jobs || []) console.log(`#${job.jobId}: ${job.title} — $${job.bountyAmountUSD || 0}`);
   return data.jobs || [];
 }
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMain(import.meta.url)) {
   const {loadApiKey} = await import('./_lib.js');
   await listOpenJobs({baseUrl:process.env.VERDIKTA_BOUNTIES_BASE_URL, apiKey:await loadApiKey()});
 }

@@ -27,7 +27,11 @@
         "~/.config/verdikta-bounties/verdikta-wallet.json",
         "scripts/*.json",
         "operator-selected work files for submission",
-        "operator-selected spend policy and approved work-order draft"
+        "operator-selected spend policy and approved work-order draft",
+        "../verdikta-discover/scripts/*",
+        "../verdikta-discover/schemas/*",
+        "../verdikta-discover/templates/*",
+        "../verdikta-discover/node_modules/**"
       ],
       "write": [
         "~/.config/verdikta-bounties/.env",
@@ -55,7 +59,12 @@
         "create/fund bounty",
         "submit work",
         "start evaluation with payable ETH prepay",
-        "finalize or claim payout"
+        "finalize or claim payout",
+        "creator approval payout",
+        "force-fail timed-out submission",
+        "recover deferred ETH refund",
+        "withdraw pull-ledger balance",
+        "close expired bounty"
       ]
     }
   },
@@ -63,7 +72,8 @@
     "VERDIKTA_WALLET_PASSWORD",
     "VERDIKTA_NETWORK",
     "VERDIKTA_BOUNTIES_BASE_URL",
-    "VERDIKTA_KEYSTORE_PATH"
+    "VERDIKTA_KEYSTORE_PATH",
+    "VERDIKTA_SPEND_POLICY"
   ],
   "requiredConfigPaths": [
     "~/.config/verdikta-bounties/.env",
@@ -76,13 +86,15 @@
       "VERDIKTA_WALLET_PASSWORD",
       "VERDIKTA_NETWORK",
       "VERDIKTA_BOUNTIES_BASE_URL",
-      "VERDIKTA_KEYSTORE_PATH"
+      "VERDIKTA_KEYSTORE_PATH",
+      "VERDIKTA_SPEND_POLICY"
     ],
     "required": [
       "VERDIKTA_WALLET_PASSWORD",
       "VERDIKTA_NETWORK",
       "VERDIKTA_BOUNTIES_BASE_URL",
-      "VERDIKTA_KEYSTORE_PATH"
+      "VERDIKTA_KEYSTORE_PATH",
+      "VERDIKTA_SPEND_POLICY"
     ],
     "optional": [
       "BASE_RPC_URL",
@@ -100,7 +112,8 @@
     "Use a fresh low-balance bot wallet; do not import high-value personal wallets.",
     "Transaction-capable scripts require interactive confirmation or --yes/--confirm-spend.",
     "Use --dry-run where available before signing.",
-    "Bounty metadata, submitted work files, CIDs, wallet addresses, and transaction hashes may become public via IPFS, Verdikta API records, and blockchain state."
+    "Bounty metadata, submitted work files, CIDs, wallet addresses, and transaction hashes may become public via IPFS, Verdikta API records, and blockchain state.",
+    "Draft handoff executes the sibling verdikta-discover code and locked dependencies in the signing process. Install both from the same reviewed repository revision and protect them from untrusted replacement. Signed recovery state can broadcast the exact approved transaction; keep it private."
   ],
   "requires": {
     "anyBinaries": [

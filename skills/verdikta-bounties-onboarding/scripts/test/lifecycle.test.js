@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { Wallet, Transaction } from 'ethers';
 import { tmpdir } from 'node:os';
 import { runCreate } from '../create_bounty.js';
 import { runSubmit } from '../submit_to_bounty.js';
 import { runClaim } from '../claim_bounty.js';
 import { iface, deployments, bindCreation, verifyTransaction } from '../_transaction-guards.js';
-const creator='0x1111111111111111111111111111111111111111',target='0x2222222222222222222222222222222222222222';
+const testWallet=new Wallet('0x'+'11'.repeat(32)); // Synthetic offline key, never funded.
+const creator=testWallet.address,target='0x2222222222222222222222222222222222222222';
 const cid='Qm'+'a'.repeat(44),hunterCid='Qm'+'b'.repeat(44),hash='0x'+'1'.repeat(64),d=deployments.base;
-const policy={maxValueWei:'2000000000000000',maxTotalWei:'5000000000000000'};
+const policy={maxValueWei:'2000000000000000',maxTotalWei:'5000000000000000',maxGasLimit:'500000',maxFeePerGasWei:'2',maxPriorityFeePerGasWei:'1'};
 const config={title:'test',description:'test only',procurementMode:'OPEN',classId:128,threshold:85,bountyAmount:'0.001',submissionWindowHours:24,oracle:{maxOracleFee:'100',alpha:500,estimatedBaseCost:'0',maxFeeBasedScaling:1},rubricJson:{criteria:[{id:'x',description:'x',weight:1,must:false}]},juryNodes:[{provider:'test',model:'test',weight:1,runs:1}]};
 const json=x=>new Response(JSON.stringify(x),{headers:{'content-type':'application/json'}});
 function log(name,args) {return {address:d.address,...iface.encodeEventLog(iface.getEvent(name),args)};}
@@ -17,7 +19,7 @@ function harness(args) {
  const provider={destroy(){},getTransaction:async()=>null,getTransactionReceipt:async()=>null};
  const wallet={address:creator,connect(){return {...this,provider};}};
  const lib={arg:n=>args[n]??null,argAll:n=>args[n]||[],getNetwork:()=> 'base',providerFor:()=>provider,loadWallet:async()=>wallet,loadApiKey:async()=> 'mock',preflightDeployment:async()=>d.address,loadSpendPolicy:async()=>policy,isDryRun:()=>false,confirmSpendOrExit:async r=>reviews.push(r),getSupportedModelsForClass:async()=>[],validateAndNormalizeJuryNodes:({juryNodes})=>juryNodes,
- sendTx:async(signer,method,tx,opts)=> {verifyTransaction(tx,{network:'base',method,args:opts.args,value:opts.exactValueWei??0n,maxValueWei:policy.maxValueWei});reviews.push(opts.review);await opts.onBeforeBroadcast?.();sent.push(method);await opts.onBroadcast?.(hash);return {status:1,hash,blockNumber:1,logs:[]};}};
+ sendTx:async(signer,method,tx,opts)=> {verifyTransaction(tx,{network:'base',method,args:opts.args,value:opts.exactValueWei??0n,maxValueWei:policy.maxValueWei});reviews.push(opts.review);await opts.onSigned?.({hash});sent.push(method);await opts.onBroadcast?.(hash);return {status:1,hash,blockNumber:1,logs:[]};}};
  return {lib,provider,wallet,sent,reviews};
 }
 async function creationFixture(t,changes={}) {
@@ -49,7 +51,10 @@ test('API_CREATED resumes once, but ambiguous broadcast and changed config stop'
  f.lib.sendTx=async()=>{throw Error('review rejected before broadcast');};
  await assert.rejects(runCreate(f.lib,f.env),/review rejected/);
  f.args.resume=`${f.file}.state.json`;const state=JSON.parse(await readFile(f.args.resume));assert.equal(state.status,'API_CREATED');
- f.lib.sendTx=send;await runCreate(f.lib,f.env);assert.deepEqual(f.counts(),{creates:1,links:1});
+ f.lib.sendTx=send;
+ const clock=Date.now;Date.now=()=>clock()+3600000;
+ try {await runCreate(f.lib,f.env);} finally {Date.now=clock;}
+ assert.deepEqual(f.counts(),{creates:1,links:1});assert.ok(f.reviews.flat().some(x=>x?.includes('Remaining submission time:')));
  await writeFile(f.args.resume,JSON.stringify({...state,status:'BROADCAST_PENDING'}));
  await assert.rejects(runCreate(f.lib,f.env),/No safe pre-broadcast/);
  await writeFile(f.args.resume,JSON.stringify({...state,network:'base-sepolia'}));
@@ -73,12 +78,15 @@ test('submit retries lagging confirmation; resume confirms without preparing aga
    if(url.endsWith('/submit')){uploads++;return json({submission:{hunterCid}});}
    if(url.endsWith('/prepare')){prepares++;return json({transaction});}
    if(url.endsWith('/start'))return json({transaction:{to:d.address,chainId:d.chainId,value:'123',data:iface.encodeFunctionData('startPreparedSubmission',[7,0])}});
-   if(url.endsWith('/confirm')){confirms++;return confirms<3?new Response(JSON.stringify({code:'SUBMISSION_BAD_ID'}),{status:400}):json({success:true});}
+   if(url.endsWith('/confirm')){confirms++;return confirms===1?new Response('<html>gateway failure</html>',{status:502}):confirms===2?new Response(JSON.stringify({code:'SUBMISSION_BAD_ID'}),{status:400}):json({success:true});}
    throw Error(url);
  }};
  const send=f.lib.sendTx;f.lib.sendTx=async(...p)=>{const r=await send(...p);r.logs=[log('SubmissionPrepared',[7,0,creator,target,100n,cid])];return r;};
  await runSubmit(f.lib,env);assert.deepEqual(pauses,[1000,2000]);assert.equal(confirms,3);
  const state=JSON.parse(await readFile(args.state));assert.equal(state.confirmed,true);state.confirmed=false;await writeFile(args.state,JSON.stringify(state));
+ delete state.submissionId;await writeFile(args.state,JSON.stringify(state));
+ f.provider.getTransaction=async()=>({...transaction,from:creator});
+ f.provider.getTransactionReceipt=async()=>({status:1,hash,logs:[log('SubmissionPrepared',[7,0,creator,target,100n,cid])]});
  args.resume='0';await runSubmit(f.lib,env);assert.equal(confirms,4);assert.equal(uploads,1);assert.equal(prepares,1);assert.deepEqual(f.sent,['prepareSubmission']);
  action='START';await runSubmit(f.lib,env);assert.equal(f.sent.at(-1),'startPreparedSubmission');assert.equal(prepares,1);
  state.hunter=target;await writeFile(args.state,JSON.stringify(state));await assert.rejects(runSubmit(f.lib,env),/recovery state/);
@@ -97,4 +105,42 @@ test('onboarding worker performs only a read-only open-job listing',async()=>{
  const calls=[];
  const jobs=await listOpenJobs({baseUrl:'https://mock.invalid',apiKey:'mock',fetchApi:async(url,options)=>{calls.push({url:String(url),options});return json({jobs:[{jobId:7,title:'Example'}]});}});
  assert.equal(jobs.length,1);assert.equal(calls.length,1);assert.equal(calls[0].options.method,'GET');assert.ok(calls[0].url.endsWith('/api/jobs?status=OPEN&minHoursLeft=2'));
+});
+
+test('resume rebroadcasts the same signed bytes and rejects tampered hashes',async t=>{
+ const f=await creationFixture(t);let signed;
+ f.lib.sendTx=async(signer,method,tx,opts)=>{
+   const rawTransaction=await testWallet.signTransaction({...tx,nonce:3,gasLimit:400000n,type:2,maxFeePerGas:2n,maxPriorityFeePerGas:1n});
+   signed={rawTransaction,hash:Transaction.from(rawTransaction).hash};
+   await opts.onSigned(signed);throw Error('transport lost');
+ };
+ await assert.rejects(runCreate(f.lib,f.env),/transport lost/);
+ f.args.resume=`${f.file}.state.json`;
+ const state=JSON.parse(await readFile(f.args.resume));assert.equal(state.status,'BROADCAST_PENDING');assert.equal(state.txHash,signed.hash);
+ let broadcasts=0;
+ f.provider.broadcastTransaction=async raw=>{broadcasts++;assert.equal(raw,signed.rawTransaction);return {hash:signed.hash,wait:async()=>({status:1,hash:signed.hash,blockNumber:5,logs:[log('BountyCreated',[7,creator,cid,128,85,1000000000000000n,f.response.job.submissionCloseTime])]})};};
+ await runCreate(f.lib,f.env);assert.equal(broadcasts,1);assert.deepEqual(f.counts(),{creates:1,links:1});
+ await writeFile(f.args.resume,JSON.stringify({...state,txHash:hash}));
+ await assert.rejects(runCreate(f.lib,f.env),/hash mismatch/);assert.equal(broadcasts,1);
+});
+test('creation readback pins the receipt block, retries lag, and reports funded recovery',async t=>{
+ const f=await creationFixture(t),pauses=[];let reads=0;
+ const original=f.env.contract;
+ f.env.pause=async ms=>pauses.push(ms);
+ f.env.contract=(...args)=>({...original(...args),getBounty:async(id,overrides)=>{reads++;assert.equal(overrides.blockTag,1);if(reads<3)throw Error('header not found');return f.bounty;}});
+ await runCreate(f.lib,f.env);assert.deepEqual(pauses,[1000,2000]);assert.equal(f.counts().links,1);
+ const g=await creationFixture(t);g.env.pause=async()=>{};const other=g.env.contract;
+ g.env.contract=(...args)=>({...other(...args),getBounty:async()=>{throw Error('RPC lag');}});
+ await assert.rejects(runCreate(g.lib,g.env),/bounty is funded.*--resume/);assert.equal(g.counts().links,0);
+});
+
+test('delayed prepared-state dry-run validates without creating or altering recovery state',async t=>{
+ const f=await creationFixture(t);f.lib.sendTx=async()=>{throw Error('review stopped');};
+ await assert.rejects(runCreate(f.lib,f.env),/review stopped/);
+ f.args.prepared=`${f.file}.state.json`;const before=await readFile(f.args.prepared,'utf8');
+ f.lib.isDryRun=()=>true;let reviewed=0;
+ f.lib.sendTx=async(signer,method,tx,opts)=>{verifyTransaction(tx,{network:'base',method,args:opts.args,value:opts.exactValueWei,maxValueWei:policy.maxValueWei});reviewed++;return null;};
+ const clock=Date.now;Date.now=()=>clock()+3600000;
+ try {await runCreate(f.lib,f.env);} finally {Date.now=clock;}
+ assert.equal(reviewed,1);assert.deepEqual(f.counts(),{creates:1,links:0});assert.equal(await readFile(f.args.prepared,'utf8'),before);
 });

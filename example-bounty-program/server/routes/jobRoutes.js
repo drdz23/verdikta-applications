@@ -399,7 +399,7 @@ router.post('/create', async (req, res) => {
     if (procurementError) return res.status(400).json({ error: 'Invalid procurement intent', details: procurementError });
     let payments;
     try { payments = normalizeBountyPayments(req.body); }
-    catch (error) { return res.status(400).json({ error: 'Invalid bounty payment', details: error.message }); }
+    catch (error) { return res.status(400).json({ error: error.code === 'INVALID_BOUNTY_WINDOW' ? 'Invalid bounty window' : 'Invalid bounty payment', details: error.message }); }
     const normalizedTarget = !targetHunter || ethers.getAddress(targetHunter) === ethers.ZeroAddress ? null : ethers.getAddress(targetHunter);
     if (!Number.isFinite(Number(threshold)) || Number(threshold) < 0 || Number(threshold) > 100) {
       return res.status(400).json({ error: 'Invalid threshold', details: 'Threshold must be between 0 and 100' });
@@ -2047,7 +2047,7 @@ router.post('/:jobId/submissions/:submissionId/finalize', async (req, res) => {
 
     if (oracleResult) {
       response.oracleResult = oracleResult;
-      if (oracleResult.passed && job.bountyAmount) {
+      if (oracleResult.passed && Number(job.bountyAmount) > 0) {
         response.expectedPayout = job.bountyAmount;
       }
     }

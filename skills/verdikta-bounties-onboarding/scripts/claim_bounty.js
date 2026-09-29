@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One state-driven action per invocation; no polling, automatic re-prepare or payout promise.
-import { fileURLToPath } from 'node:url';
-import { Contract } from 'ethers';
+import { isMain } from './_cli.js';
+import { Contract, formatEther } from 'ethers';
 
 import { abi, iface, deployments } from './_transaction-guards.js';
 export async function runClaim(lib, { contract = (address, abi, provider) => new Contract(address, abi, provider), baseUrl: configuredBaseUrl = process.env.VERDIKTA_BOUNTIES_BASE_URL || '' } = {}) {
@@ -22,7 +22,7 @@ export async function runClaim(lib, { contract = (address, abi, provider) => new
       const bounty = await escrow.getBounty(jobId);
       if (next !== 'AWAIT_CREATOR' || bounty.creator.toLowerCase() !== signer.address.toLowerCase()) throw new Error('Creator approval unavailable to this signer');
       const submission = await escrow.getSubmission(jobId, submissionId);
-      review = [`Release creator-determination payout: ${bounty.creatorDeterminationPayment} wei`, `Hunter: ${submission.hunter}`, `Work CID: ${submission.hunterCid}`];
+      review = [`Release creator-determination payout: ${formatEther(bounty.creatorDeterminationPayment)} ETH (${bounty.creatorDeterminationPayment} wei)`, `Hunter: ${submission.hunter}`, `Work CID: ${submission.hunterCid}`];
       method = 'creatorApproveSubmission';
     }
     if (method) {
@@ -39,6 +39,6 @@ export async function runClaim(lib, { contract = (address, abi, provider) => new
   } finally { provider.destroy(); }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMain(import.meta.url)) {
   await runClaim(await import('./_lib.js'));
 }

@@ -99,3 +99,15 @@ test('future clock drift and fractional windows stop creation before mutation',(
   assert.throws(()=>creationTerms({...config,submissionWindowHours:1.5}),/whole hours/);
   assert.throws(()=>creationTerms({...config,creatorAssessmentWindowSeconds:3900}),/whole hours/);
 });
+
+test('saved local creation timestamp permits delayed review but enforces usable deadline',()=>{
+ const old=Date.now;
+ try {
+  Date.now=()=> (opened+3600)*1000;
+  assert.equal(bindCreation(config,response,{apiCreatedAt:opened}).params.submissionDeadline,BigInt(opened+86400));
+  assert.throws(()=>bindCreation(config,response),/local clock/);
+  assert.throws(()=>bindCreation(config,response,{apiCreatedAt:opened-901}),/local clock/);
+  Date.now=()=> (opened+86400-302)*1000;
+  assert.throws(()=>bindCreation(config,response,{apiCreatedAt:opened}),/five minutes/);
+ } finally {Date.now=old;}
+});

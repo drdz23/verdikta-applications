@@ -431,7 +431,7 @@ async function main() {
     if (!(runWorker === 'n' || runWorker === 'no')) {
       const { spawn } = await import('node:child_process');
       await new Promise((resolve, reject) => {
-        const p = spawn(process.execPath, ['bounty_worker_min.js'], {
+        const p = spawn(process.execPath, [fileURLToPath(new URL('./bounty_worker_min.js', import.meta.url))], {
           stdio: 'inherit',
           env: { ...process.env, VERDIKTA_BOT_FILE: botOut }
         });
