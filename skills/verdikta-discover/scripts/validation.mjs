@@ -1,3 +1,5 @@
+import { supplierAddress } from './address.mjs';
+import previewSchema from '../schemas/preview.schema.json' with { type: 'json' };
 import Ajv from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import sourceRequest from '../schemas/source-check-v1.request.schema.json' with { type: 'json' };
@@ -11,6 +13,17 @@ const validators = {
   'source-check-v1': { request: ajv.compile(sourceRequest), result: ajv.compile(sourceResult) },
   'evidence-pack-v1': { request: ajv.compile(packRequest), result: ajv.compile(packResult) },
 };
+const previewShape = ajv.compile(previewSchema);
+export function validatePreview(assessment) {
+  if (!previewShape(assessment)) return previewShape.errors.map(e => `${e.instancePath || '/'} ${e.message}`);
+  const errors = [];
+  if (assessment.draft) {
+    const a = assessment.procurement, b = assessment.draft.procurement;
+    if (a.mode !== b.mode || a.targetHunter !== b.targetHunter) errors.push('Draft procurement differs from assessment');
+    if (a.mode === 'TARGETED' && !supplierAddress(a.targetHunter)) errors.push('Invalid supplier checksum/address');
+  }
+  return errors;
+}
 const unique = values => new Set(values).size === values.length;
 function shape(kind, type, value) {
   const validate = validators[kind]?.[type];
@@ -53,7 +66,7 @@ export function validateResult(kind, request, result, approvedDigest, { producti
     if (row.effort.some(e => !request.source_policy.allowed_sources.includes(e.location))) errors.push('Effort location is outside the approved URL list');
     // A blocked URL counts only for that URL, never for other required locations.
     if (new Set(row.effort.map(e => e.location)).size < request.source_policy.minimum_locations_per_item) errors.push('Minimum search effort not documented');
-    for (const effort of row.effort.filter(e => e.outcome !== 'ACCESS_BLOCKED')) {
+    for (const effort of row.effort.filter(e => !['ACCESS_BLOCKED', 'NOT_FOUND', 'OUT_OF_SCOPE'].includes(e.outcome))) {
       if (!refs.some(id => result.sources.some(s => s.source_id === id && s.url === effort.location))) errors.push('Inspected effort needs linked source evidence');
     }
     if (claimMode) {

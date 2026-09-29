@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { readFile, mkdtemp, writeFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { createServer } from 'node:http';
+const run = promisify(execFile);
 import { createRequire } from 'node:module';
 import { preview } from '../scripts/preview-core.mjs';
-import { validateRequest, validateResult } from '../scripts/validation.mjs';
+import { validateRequest, validateResult, validatePreview } from '../scripts/validation.mjs';
 import Ajv from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 const require = createRequire(import.meta.url);
@@ -55,39 +58,60 @@ test('targeted missing/zero/invalid supplier never becomes open',async()=>{
   const request=await json('examples/source-check-v1.request.json');
   for (const targetHunter of [null,'garbage','0x'+'0'.repeat(40)]) assert.equal(preview({request,sharing_authorized:true,procurement_mode:'TARGETED',targetHunter}).decision,'NEEDS_SCOPE');
 });
-test('CLI runs with filesystem permissions; sentinel reads and network are denied', async () => {
+test('CLI isolation denies live loopback, DNS, credential reads and child processes', async () => {
   const dir=await realpath(await mkdtemp(`${tmpdir()}/verdikta-preview-`));
+  const server=createServer((req,res)=>res.end('reachable'));
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const url=`http://127.0.0.1:${server.address().port}`;
   try {
     const input=`${dir}/request.json`, preload=`${dir}/deny-network.mjs`, secret=`${dir}/credential`;
     await writeFile(input,JSON.stringify(await json('examples/assessment.json')));
     await writeFile(secret,'DUMMY credential sentinel');
-    // Node's permission model on supported older runtimes does not deny network.
-    // Patch builtins and synchronize named exports, then verify the denial probes.
+    // Older Node permission models do not restrict sockets. Intercept each builtin,
+    // including DNS and named imports, and distinguish denial from connection failure.
     await writeFile(preload,`import {syncBuiltinESMExports} from 'node:module';
 import http from 'node:http'; import https from 'node:https'; import net from 'node:net'; import dgram from 'node:dgram';
-const deny=()=>{throw Error('Network denied')};
+import tls from 'node:tls'; import http2 from 'node:http2'; import dns from 'node:dns';
+const deny=()=>{throw Object.assign(Error('Network denied'),{code:'ERR_PREVIEW_NETWORK_DENIED'})};
 for(const m of [http,https]) {m.request=deny;m.get=deny;}
 net.connect=deny;net.createConnection=deny;net.Socket.prototype.connect=deny;dgram.createSocket=deny;
+tls.connect=deny;http2.connect=deny;
+for(const obj of [dns,dns.promises,dns.Resolver.prototype,dns.promises.Resolver.prototype]) {
+  for(const key of Object.getOwnPropertyNames(obj)) if(/^(lookup|resolve|reverse)/.test(key)) obj[key]=deny;
+}
 globalThis.fetch=deny;syncBuiltinESMExports();`);
     const flags=['--experimental-permission',`--allow-fs-read=${root.pathname}`,`--allow-fs-read=${input}`,`--allow-fs-read=${preload}`,'--import',preload];
+    const options={env:{HOME:dir},encoding:'utf8',timeout:10000};
     for(const extra of [{},{VERDIKTA_WALLET_PASSWORD:'DUMMY',VERDIKTA_KEYSTORE_PATH:secret,VERDIKTA_BOT_FILE:secret}]) {
-      const output=execFileSync(process.execPath,[...flags,new URL('scripts/preview.mjs',root).pathname,input],{env:{HOME:dir,...extra},encoding:'utf8'});
-      assert.equal(JSON.parse(output).quote_status,'DRAFT_NOT_QUOTED');
+      const {stdout}=await run(process.execPath,[...flags,new URL('scripts/preview.mjs',root).pathname,input],{...options,env:{HOME:dir,...extra}});
+      assert.equal(JSON.parse(stdout).quote_status,'DRAFT_NOT_QUOTED');
     }
-    for (const probe of [
+    const liveProbes=[
+      `import {get} from 'node:http';await new Promise((ok,no)=>get(${JSON.stringify(url)},r=>{r.resume();r.on('end',ok)}).on('error',no));`,
+      `import {connect} from 'node:net';await new Promise((ok,no)=>{const s=connect(${server.address().port},'127.0.0.1',()=>{s.end();ok()});s.on('error',no)});`,
+      `await (await fetch(${JSON.stringify(url)})).text();`,
+      `import {lookup} from 'node:dns/promises';await lookup('localhost');`
+    ];
+    // Controls prove these probes can succeed; a refusal/invalid host is not a pass.
+    for(const probe of liveProbes) await run(process.execPath,['--input-type=module','-e',probe],options);
+    for(const probe of [...liveProbes,
+      `import {resolve4} from 'node:dns';resolve4('localhost',()=>{});`,
+      `import {Resolver} from 'node:dns/promises';await new Resolver().resolve4('localhost');`,
+      `import {connect} from 'node:tls';connect(${server.address().port},'127.0.0.1');`,
+      `import {connect} from 'node:http2';connect(${JSON.stringify(url)});`,
+      `import {createSocket} from 'node:dgram';createSocket('udp4');`
+    ]) await assert.rejects(run(process.execPath,[...flags,'--input-type=module','-e',probe],options),e=>e.stderr.includes('ERR_PREVIEW_NETWORK_DENIED'));
+    for(const probe of [
       `import {readFile} from 'node:fs/promises';await readFile(${JSON.stringify(secret)});`,
       `import {readFileSync} from 'node:fs';readFileSync(${JSON.stringify(secret)});`,
-      `import {request} from 'node:http';request('http://127.0.0.1');`,
-      `import {connect} from 'node:net';connect(1,'127.0.0.1');`,
-      `fetch('https://example.invalid');`,
       `import {execFileSync} from 'node:child_process';execFileSync('true');`
-    ]) assert.throws(()=>execFileSync(process.execPath,[...flags,'--input-type=module','-e',probe],{env:{HOME:dir},stdio:'pipe'}));
-  } finally { await rm(dir,{recursive:true,force:true}); }
+    ]) await assert.rejects(run(process.execPath,[...flags,'--input-type=module','-e',probe],options),e=>e.stderr.includes('ERR_ACCESS_DENIED'));
+  } finally { await new Promise(resolve=>server.close(resolve)); await rm(dir,{recursive:true,force:true}); }
 });
 test('metadata has no gate; preview graph excludes executor',async()=>{
   const skill=await readFile(new URL('SKILL.md',root),'utf8');assert.doesNotMatch(skill.split('---')[1],/requires|primaryEnv|always:|VERDIKTA_/);
   for(const file of ['scripts/preview-core.mjs','scripts/validation.mjs','scripts/preview.mjs','scripts/address.mjs']) {
-    const text=await readFile(new URL(file,root),'utf8');assert.doesNotMatch(text,/from ['"].*(?:_lib|_env|ethers|viem|_executor|_transaction|(?:node:)?(?:https|http|net|dgram|child_process))['"]|process\.env|fetch\(|import\s*\(/);
+    const text=await readFile(new URL(file,root),'utf8');assert.doesNotMatch(text,/from ['"].*(?:_lib|_env|ethers|viem|_executor|_transaction|(?:node:)?(?:https|http|net|dgram|dns|tls|http2|child_process))['"]|process(?:\.env|\[['"]env['"]\])|fetch\(|import\s*\(/);
   }
 });
 test('malformed requests need scope',()=>{
@@ -138,4 +162,24 @@ test('conflicting cells require distinct typed alternatives with source evidence
   row.alternatives=[{value:'JSON',evidence_ids:['S1']},{value:'XML',evidence_ids:['S1']}];
   assert.deepEqual(validateResult('evidence-pack-v1',request,result,result.input_sha256),[]);
   row.alternatives[1].value='JSON';assert.ok(validateResult('evidence-pack-v1',request,result,result.input_sha256).length);
+});
+
+test('preview schema and binding reject missing or conflicting draft procurement',async()=>{
+  const request=await json('examples/source-check-v1.request.json');
+  const address='0x52908400098527886E0F7030069857D2E4169EE7';
+  for(const targetHunter of [address,address.toLowerCase()]) {
+    const a=preview({request,sharing_authorized:true,procurement_mode:'TARGETED',targetHunter});
+    assert.equal(a.procurement.targetHunter,address);assert.deepEqual(validatePreview(a),[]);
+    for(const mutate of [x=>x.draft=null,x=>x.procurement.targetHunter=null,x=>x.procurement.mode='OPEN',x=>x.draft.procurement.targetHunter='0x'+'1'.repeat(40)]) {
+      const invalid=JSON.parse(JSON.stringify(a));mutate(invalid);assert.ok(validatePreview(invalid).length);
+    }
+  }
+});
+test('honest negative search outcomes need effort but no invented citations',async()=>{
+  const request=await json('examples/source-check-v1.request.json'),result=await json('examples/source-check-v1.result.json');
+  result.sources=[];
+  for(const outcome of ['NOT_FOUND','OUT_OF_SCOPE','ACCESS_BLOCKED']) {
+    for(const row of result.claims) {row.status='UNRESOLVED';row.evidence_ids=[];row.unresolved_reason='No relevant evidence';row.effort=[{location:request.source_policy.allowed_sources[0],outcome,note:'Searched approved location'}];}
+    assert.deepEqual(validateResult('source-check-v1',request,result,result.input_sha256),[]);
+  }
 });

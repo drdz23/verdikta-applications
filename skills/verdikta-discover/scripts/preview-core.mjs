@@ -19,7 +19,7 @@ export function preview(input = {}) {
   } else if (local_sufficient === true) {
     decision = 'LOCAL'; reason = 'Available local tools and sources meet the need; coordination and evaluation add unnecessary cost.';
   } else if (sharing_authorized !== true) {
-    decision = sharing_authorized === false ? 'UNSUITABLE' : 'NEEDS_SCOPE'; reason = 'Obtain sharing approval before preparing an external work order.';
+    decision = sharing_authorized === false ? 'UNSUITABLE' : 'NEEDS_SCOPE'; reason = sharing_authorized === false ? 'Sharing was declined; keep this task local.' : 'Obtain sharing approval before preparing an external work order.';
   } else if (errors.length) {
     decision = 'NEEDS_SCOPE'; reason = 'Define or reduce the bounded request before considering outside work.';
   } else if (handoff_requested === true) {
@@ -27,7 +27,7 @@ export function preview(input = {}) {
   }
   const targetingErrors = [];
   if (!['OPEN', 'TARGETED'].includes(procurement_mode)) targetingErrors.push('Select OPEN or TARGETED explicitly');
-  if (procurement_mode === 'TARGETED' && !supplierAddress(targetHunter)) targetingErrors.push('Targeted procurement needs a nonzero supplier wallet address');
+  if (procurement_mode === 'TARGETED' && !supplierAddress(targetHunter)) targetingErrors.push('Targeted procurement needs a nonzero 0x-prefixed supplier address with a valid checksum when mixed case');
   if (procurement_mode !== 'TARGETED' && targetHunter) targetingErrors.push('A supplier address requires TARGETED mode');
   if (targetingErrors.length && ['PREVIEW', 'HANDOFF_REQUESTED'].includes(decision)) { decision = 'NEEDS_SCOPE'; reason = targetingErrors[0]; }
   const template = templates[kind];

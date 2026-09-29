@@ -12,3 +12,7 @@ Required distinctions:
 - risks: include public-data exposure on later publication, uncertain supplier/fees, subjective judgment limitations, and non-immediate refund/finalization behavior where relevant.
 
 A useful next action is to finish the bounded work specification or obtain a real supplier offer. It is not "fund this wallet to continue browsing."
+
+- procurement: explicit OPEN or TARGETED (UNSELECTED means missing scope), with a canonical supplier address only for TARGETED.
+- draft: null unless PREVIEW/HANDOFF_REQUESTED has complete, approved scope. A draft contains the request, template, rubric, threshold, sharing approval and the same procurement as the assessment. JSON Schema enforces shape and mode consistency; `validatePreview` additionally verifies exact target equality and checksum.
+- Honest NOT_FOUND or OUT_OF_SCOPE effort at an approved URL may have no source citation. Inspected evidence must have a linked source; all effort still counts only for its own approved URL and minimum locations must be met.

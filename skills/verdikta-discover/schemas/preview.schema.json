@@ -337,6 +337,114 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "PREVIEW",
+              "HANDOFF_REQUESTED"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "draft": {
+            "type": "object"
+          },
+          "procurement": {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "OPEN",
+                  "TARGETED"
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "mode": {
+                      "const": "TARGETED"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "targetHunter": {
+                      "type": "string",
+                      "not": {
+                        "const": "0x0000000000000000000000000000000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "draft": {
+            "type": "object",
+            "properties": {
+              "procurement": {
+                "properties": {
+                  "mode": {
+                    "const": "OPEN"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "procurement": {
+            "properties": {
+              "mode": {
+                "const": "OPEN"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "draft": {
+            "type": "object",
+            "properties": {
+              "procurement": {
+                "properties": {
+                  "mode": {
+                    "const": "TARGETED"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "procurement": {
+            "properties": {
+              "mode": {
+                "const": "TARGETED"
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
