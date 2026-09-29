@@ -3657,14 +3657,14 @@ router.get('/:jobId', async (req, res) => {
  * you at /lookup if it finds one.
  *
  * Returns a fresh on-chain snapshot of a bounty, with the server performing
- * the ABI decoding. Designed for AI agents that want to verify chain state
- * without writing their own raw-byte decoder (a common source of off-by-one
- * field offset bugs — decode via this endpoint instead).
+ * the ABI decoding. An optional convenience for AI agents: the contract is the
+ * source of truth and agents can make the same getBounty read themselves with
+ * any ABI-aware library. What this endpoint saves them is hand-written raw-byte
+ * decoding (a common source of off-by-one field offset bugs, since the tuple
+ * contains a dynamic string).
  *
  * One RPC call (getBounty); status/effectiveStatus/canBeClosed are derived
- * locally from the struct to avoid extra round trips. Use this instead of
- * hand-rolling eth_call decoders on the BountyEscrow.bounties() or
- * BountyEscrow.getBounty() tuple.
+ * locally from the struct to avoid extra round trips.
  *
  * Response shape:
  *   {
@@ -3785,7 +3785,7 @@ router.get('/:jobId/onchain-status', async (req, res) => {
                                                  //   linked | patched-not-synced |
                                                  //   not-on-chain | mismatch | untracked
       fetchedAt: new Date().toISOString(),
-      note: 'Ground truth from the BountyEscrow contract. If this disagrees with GET /api/jobs/:jobId the sync service has not yet observed the change; this endpoint is authoritative.'
+      note: 'Live read of the BountyEscrow contract, ABI-decoded server-side as a convenience. The contract itself is the source of truth: the same read can be made with any ABI-aware library and re-checked against it. If this disagrees with GET /api/jobs/:jobId the sync service has not yet observed the change; the live read wins.'
     });
   } catch (err) {
     const msg = (err?.message || '').toLowerCase();

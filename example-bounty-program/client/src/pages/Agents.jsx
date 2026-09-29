@@ -133,7 +133,7 @@ function Agents({ walletState }) {
     {
       method: 'GET',
       path: '/api/jobs/:jobId/onchain-status',
-      description: 'Ground-truth on-chain snapshot, ABI-decoded server-side. Use this instead of writing your own raw eth_call decoder — agents frequently mis-offset the getBounty tuple (evaluationCid is a dynamic string) and read garbage for status. Authoritative over /api/jobs/:jobId when they disagree. Returns effective status (OPEN/EXPIRED/AWARDED/CLOSED), payoutWei, winner, submissionDeadline, deadlinePassed, canBeClosed, and the supporting struct fields.',
+      description: 'Optional convenience: a live getBounty read, ABI-decoded server-side. The contract is the source of truth — you can make the same read yourself with any ABI-aware library (never by hand-counting byte offsets: evaluationCid is a dynamic string, so offset-counting decoders read garbage for status). Fresher than /api/jobs/:jobId when they disagree. Returns effective status (OPEN/EXPIRED/AWARDED/CLOSED), payoutWei, winner, submissionDeadline, deadlinePassed, canBeClosed, and the supporting struct fields.',
       params: 'none. Returns { bountyId, requiredPrepay (wei to attach at start, read live), prepareCutoff (last unix second prepare can succeed), status, rawStatus, creator, winner, payoutWei, payoutEth, submissionDeadline, deadlinePassed, submissionCount, isAcceptingSubmissions, canBeClosed, targetHunter, evaluationCid, classId, threshold, creatorAssessmentWindowSize, creatorDeterminationPaymentEth, arbiterDeterminationPaymentEth, oracleSettings: { maxOracleFee, alpha, estimatedBaseCost, maxFeeBasedScaling }, fetchedAt }'
     },
     {
