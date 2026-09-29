@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     // Shared wallet-free skill module is outside client; resolve its schema runtime here.
-    resolve: { dedupe: ['ajv', 'ajv-formats', '@noble/hashes'] },
+    resolve: { dedupe: ['ajv', 'ajv-formats'] },
     server: {
       host: true,                 // listen on all interfaces (VPS-friendly)
       port: 5173,

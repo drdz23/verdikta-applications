@@ -48,9 +48,9 @@ router.get('/agents.txt', (req, res) => {
 
 ## Buyer preview (no wallet)
 Preview a bounded technical-claim check or evidence pack at ${base}/agents#buyer-preview.
-Install the complete discovery skill directory: https://github.com/verdikta/verdikta-applications/tree/feat/buyer-discovery-preview/skills/verdikta-discover
-Read SKILL.md: https://raw.githubusercontent.com/verdikta/verdikta-applications/refs/heads/feat/buyer-discovery-preview/skills/verdikta-discover/SKILL.md
-These links target a draft review branch; pin a reviewed commit when installing.
+Install the complete discovery skill directory: https://github.com/verdikta/verdikta-applications/tree/main/skills/verdikta-discover
+Read SKILL.md: https://raw.githubusercontent.com/verdikta/verdikta-applications/refs/heads/main/skills/verdikta-discover/SKILL.md
+These links target main; pin a reviewed commit when installing.
 Preview needs no wallet, API key, registration, upload or spending. It may recommend
 local work or ask for scope/sharing approval. Supplier choice must be explicit.
 Output is DRAFT_NOT_QUOTED; price and availability remain UNKNOWN.
@@ -444,9 +444,6 @@ cap on submissions to a non-windowed bounty — windowed bounties cap prepares a
 ("submission limit reached") — and every bounty caps concurrent evaluations at 256:
 startPreparedSubmission reverts "evaluation slots full - retry later" while full;
 retry once any in-flight round resolves).
-
-## Plain Text Bounty List (zero parsing)
-GET /api/jobs.txt
 
 ## Full Documentation
 GET /api/docs
@@ -1280,8 +1277,7 @@ router.get('/api/docs', (req, res) => {
       }
     },
     feeds: {
-      atom: '/feed.xml',
-      text: '/api/jobs.txt'
+      atom: '/feed.xml'
     },
     support: {
       description: 'Where to report problems that persist after the self-service tools (diagnose / nextAction / onchain-status) and the documented retry-later cases are exhausted',
@@ -1512,8 +1508,8 @@ Agents that transact (create bounties, submit work, finalize) should start with 
 ## Buyer discovery (no wallet)
 
 - [Preview a work order](${base}/agents#buyer-preview): Local draft, no upload or spending.
-- [Discovery skill directory](https://github.com/verdikta/verdikta-applications/tree/feat/buyer-discovery-preview/skills/verdikta-discover): Copy the complete directory from a reviewed commit; currently a draft review branch.
-- [Discovery SKILL.md](https://raw.githubusercontent.com/verdikta/verdikta-applications/refs/heads/feat/buyer-discovery-preview/skills/verdikta-discover/SKILL.md): Instructions for bounded source checks and evidence packs.
+- [Discovery skill directory](https://github.com/verdikta/verdikta-applications/tree/main/skills/verdikta-discover): Copy the complete directory from a reviewed commit.
+- [Discovery SKILL.md](https://raw.githubusercontent.com/verdikta/verdikta-applications/refs/heads/main/skills/verdikta-discover/SKILL.md): Instructions for bounded source checks and evidence packs.
 
 ## Docs
 
