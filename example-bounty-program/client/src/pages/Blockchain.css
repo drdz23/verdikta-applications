@@ -322,6 +322,13 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* Every <pre> on the page (including the inline-styled ones inside callouts)
+   scrolls within its own box instead of widening the document on phones. */
+.blockchain-page pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .blockchain-page .code-block pre {
   margin: 0;
   padding: 1rem;
