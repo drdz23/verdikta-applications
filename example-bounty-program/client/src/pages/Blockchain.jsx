@@ -700,6 +700,25 @@ submission-package.zip
             </tbody>
           </table>
         </div>
+        <div className="callout callout-info" style={{ marginTop: '1rem' }}>
+          <FileCode size={24} />
+          <div>
+          <strong>Contract ABI — available without this site.</strong> Use the merged ABI: the
+          escrow's own ABI plus the lens views it serves at its own address
+          (<code>nextAction</code>, <code>getEffectiveBountyStatus</code>,{' '}
+          <code>canBeClosed</code>, <code>getSubmissions</code>, <code>getBounties</code>,{' '}
+          <code>getOracleResult</code>…). Explorer copies of the escrow ABI alone omit those views.
+          The same bytes are published in three independent places:
+          {' '}<a href="https://gateway.pinata.cloud/ipfs/QmZa2NtTne6xj8c3ZBH7tPrLi2ZJwjaoKN1RyH2S6pLx59" target="_blank" rel="noopener noreferrer">IPFS</a>{' '}
+          (<code>QmZa2NtTne6xj8c3ZBH7tPrLi2ZJwjaoKN1RyH2S6pLx59</code>),
+          {' '}<a href="https://github.com/verdikta/verdikta-applications/blob/main/example-bounty-program/onchain/abi/BountyEscrow.json" target="_blank" rel="noopener noreferrer">GitHub</a>,
+          and this site's mirror <a href="/api/abi/BountyEscrow.json" target="_blank" rel="noopener noreferrer"><code>/api/abi/BountyEscrow.json</code></a>{' '}
+          (<a href="/api/abi" target="_blank" rel="noopener noreferrer"><code>/api/abi</code></a> lists addresses and links).
+          Every deployed contract is source-verified with an exact match on{' '}
+          <a href={`https://repo.sourcify.dev/${activeContract.chainId}/${activeContract.bountyEscrow}`} target="_blank" rel="noopener noreferrer">Sourcify</a>,
+          whose API needs no key.
+          </div>
+        </div>
         <div className="network-info">
           <div className="network-card">
             <h4>Base Sepolia (Testnet)</h4>
