@@ -76,7 +76,7 @@ function Home({ walletState }) {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
-  // Recent ETH/USD price (CoinGecko, 1-min server cache) for approximate payout values
+  // Recent ETH/USD price (server proxy: Coinbase, CoinGecko fallback; 1-min cache) for approximate payout values
   const [ethPrice, setEthPrice] = useState(0);
 
   // Refs for auto-refresh and scroll
@@ -260,7 +260,7 @@ function Home({ walletState }) {
             {ethPrice > 0 && (
               <span
                 className="eth-rate-note"
-                title="Approximate USD values use a recent ETH price from CoinGecko"
+                title="Approximate USD values use a recent ETH/USD spot price"
               >
                 ETH ≈ ${formatUsd(ethPrice)}
               </span>

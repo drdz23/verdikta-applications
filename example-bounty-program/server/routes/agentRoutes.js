@@ -1235,7 +1235,7 @@ router.get('/api/docs', (req, res) => {
       {
         method: 'GET',
         path: '/jobs/eth-price',
-        description: 'Get current ETH price in USD (proxied from CoinGecko, cached 1 minute)'
+        description: 'Get current ETH price in USD (Coinbase spot, CoinGecko fallback; cached 1 minute). stale: true marks a last-known price (ageSeconds gives its age); usd 0 means no price is available'
       },
       // Discovery endpoints
       {
