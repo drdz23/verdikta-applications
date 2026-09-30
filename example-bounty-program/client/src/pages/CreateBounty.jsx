@@ -1,5 +1,6 @@
 import { rubricWeights } from '../utils/rubricWeights';
 import { validateBountyWindows } from '../utils/bountyWindows';
+import { effectiveBountyAmountEth } from '../utils/effectiveBountyAmount';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -677,7 +678,11 @@ function CreateBounty({ walletState }) {
     if (!walletState.isConnected) { toast.warning('Please connect your wallet first'); return; }
     if (!formData.title.trim()) { toast.warning('Please enter a job title'); return; }
     if (!formData.description.trim()) { toast.warning('Please enter a job description'); return; }
-    if (!formData.payoutAmount || parseFloat(formData.payoutAmount) <= 0) {
+    // Windowed bounties are funded with max(creator, arbiter) payment; the
+    // payout field is hidden in that mode and this derived value is what gets
+    // displayed, priced in USD, sent to the API and escrowed on-chain.
+    const bountyAmountEth = effectiveBountyAmountEth(formData);
+    if (!formData.enableApprovalWindow && bountyAmountEth == null) {
       toast.warning('Please enter a valid payout amount'); return;
     }
     // Parse the submission window ONCE and send this same decimal value to the
@@ -741,8 +746,8 @@ function CreateBounty({ walletState }) {
         description: formData.description,
         workProductType: formData.workProductType,
         creator: walletState.address,
-        bountyAmount: parseFloat(formData.payoutAmount),
-        bountyAmountUSD: parseFloat(formData.payoutAmount) * (formData.ethPriceUSD || 0),
+        bountyAmount: bountyAmountEth,
+        bountyAmountUSD: parseFloat(bountyAmountEth) * (formData.ethPriceUSD || 0),
         threshold,
         ...(loadedRubricCid ? { rubricCid: loadedRubricCid } : { rubricJson: rubricForBackend }),
         classId: selectedClassId,
@@ -784,7 +789,7 @@ function CreateBounty({ walletState }) {
         evaluationCid: job.evaluationCid,
         classId: selectedClassId,
         threshold,
-        bountyAmountEth: parseFloat(formData.payoutAmount),
+        bountyAmountEth,
         submissionWindowHours,
         ...(formData.targetHunter ? { targetHunter: formData.targetHunter } : {}),
         ...(formData.enableApprovalWindow ? {
@@ -942,26 +947,28 @@ function CreateBounty({ walletState }) {
             </div>
 
             <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="payoutAmount">
-                  Payout Amount (ETH) <span className="required">*</span>
-                </label>
-                <input
-                  type="number"
-                  id="payoutAmount"
-                  value={formData.payoutAmount}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, payoutAmount: e.target.value }))}
-                  placeholder="0.1"
-                  step="0.001"
-                  min="0"
-                  required
-                />
-                {formData.payoutAmount && formData.ethPriceUSD > 0 && (
-                  <small className="helper-text">
-                    ≈ ${(parseFloat(formData.payoutAmount) * (formData.ethPriceUSD || 0)).toFixed(2)} USD
-                  </small>
-                )}
-              </div>
+              {!formData.enableApprovalWindow && (
+                <div className="form-group">
+                  <label htmlFor="payoutAmount">
+                    Payout Amount (ETH) <span className="required">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    id="payoutAmount"
+                    value={formData.payoutAmount}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, payoutAmount: e.target.value }))}
+                    placeholder="0.1"
+                    step="0.001"
+                    min="0"
+                    required
+                  />
+                  {formData.payoutAmount && formData.ethPriceUSD > 0 && (
+                    <small className="helper-text">
+                      ≈ ${(parseFloat(formData.payoutAmount) * (formData.ethPriceUSD || 0)).toFixed(2)} USD
+                    </small>
+                  )}
+                </div>
+              )}
 
               <div className="form-group">
                 <label htmlFor="submissionWindow">
@@ -1096,12 +1103,19 @@ function CreateBounty({ walletState }) {
                     </div>
                   </div>
 
-                  {formData.creatorPaymentEth && formData.arbiterPaymentEth && (
-                    <div className="escrow-preview">
-                      Escrow required: {Math.max(parseFloat(formData.creatorPaymentEth) || 0, parseFloat(formData.arbiterPaymentEth) || 0)} ETH
-                      {' '}(max of creator and arbiter payments)
-                    </div>
-                  )}
+                  <div className="escrow-preview">
+                    {effectiveBountyAmountEth(formData) != null ? (
+                      <>
+                        Bounty amount: {effectiveBountyAmountEth(formData)} ETH
+                        {formData.ethPriceUSD > 0 && (
+                          <> (≈ ${(parseFloat(effectiveBountyAmountEth(formData)) * formData.ethPriceUSD).toFixed(2)} USD)</>
+                        )}
+                        {' '}— the larger of the two payments above. This is what your wallet escrows and what the bounty lists as its amount.
+                      </>
+                    ) : (
+                      <>Enter both payments above; the bounty amount is the larger of the two.</>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
