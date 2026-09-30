@@ -427,7 +427,8 @@ class ContractService {
     try {
       // Encode exact solidity widths
       const now = Math.floor(Date.now() / 1000);
-      const submissionDeadline = BigInt(now + Math.trunc(winHrs * 3600));
+      // Round (not truncate) to match the server's stored deadline exactly.
+      const submissionDeadline = BigInt(now + Math.round(winHrs * 3600));
       const classId64 = BigInt(classId);
       const thresh8 = BigInt(thrNum);
 
@@ -442,7 +443,7 @@ class ContractService {
       if (hasApprovalWindow) {
         creatorPayWei = ethers.parseEther(String(creatorDeterminationPaymentEth));
         arbiterPayWei = ethers.parseEther(String(arbiterDeterminationPaymentEth));
-        windowSizeSec = BigInt(Math.trunc(Number(creatorAssessmentWindowHours) * 3600));
+        windowSizeSec = BigInt(Math.round(Number(creatorAssessmentWindowHours) * 3600));
       } else {
         // Non-windowed: both payments equal the escrowed amount, window 0.
         creatorPayWei = amountWei;

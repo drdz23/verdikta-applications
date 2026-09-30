@@ -1,4 +1,5 @@
 import { rubricWeights } from '../utils/rubricWeights';
+import { validateBountyWindows } from '../utils/bountyWindows';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -679,6 +680,16 @@ function CreateBounty({ walletState }) {
     if (!formData.payoutAmount || parseFloat(formData.payoutAmount) <= 0) {
       toast.warning('Please enter a valid payout amount'); return;
     }
+    // Parse the submission window ONCE and send this same decimal value to the
+    // API and the contract. Previously the guard below used the decimal while
+    // the payloads sent parseInt(), so 1.5h passed here and failed server-side.
+    const submissionWindowHours = Number(formData.submissionWindowHours);
+    const windowError = validateBountyWindows({
+      submissionWindowHours,
+      approvalWindowHours: formData.approvalWindowHours,
+      enableApprovalWindow: formData.enableApprovalWindow,
+    });
+    if (windowError) { toast.warning(windowError); return; }
     if (!rubric.title.trim()) { toast.warning('Please create or load a rubric'); return; }
     if (!hasAtLeastOneCriterion()) { toast.warning('Please add at least one criterion'); return; }
 
@@ -694,12 +705,6 @@ function CreateBounty({ walletState }) {
       }
       if (!formData.arbiterPaymentEth || parseFloat(formData.arbiterPaymentEth) <= 0) {
         toast.warning('Arbiter approval payment must be > 0 ETH'); return;
-      }
-      if (!formData.approvalWindowHours || parseFloat(formData.approvalWindowHours) <= 0) {
-        toast.warning('Approval window must be > 0 hours'); return;
-      }
-      if (Number(formData.approvalWindowHours) * 3600 + 2 >= Number(formData.submissionWindowHours) * 3600) {
-        toast.warning('Submission window must exceed the approval window by more than 2 seconds'); return;
       }
     }
 
@@ -748,7 +753,7 @@ function CreateBounty({ walletState }) {
           weight: n.weight,
         })),
         iterations,
-        submissionWindowHours: parseInt(formData.submissionWindowHours, 10),
+        submissionWindowHours,
         ...(formData.targetHunter ? { targetHunter: formData.targetHunter } : {}),
         ...(formData.enableApprovalWindow ? {
           creatorDeterminationPayment: parseFloat(formData.creatorPaymentEth),
@@ -780,7 +785,7 @@ function CreateBounty({ walletState }) {
         classId: selectedClassId,
         threshold,
         bountyAmountEth: parseFloat(formData.payoutAmount),
-        submissionWindowHours: parseInt(formData.submissionWindowHours, 10),
+        submissionWindowHours,
         ...(formData.targetHunter ? { targetHunter: formData.targetHunter } : {}),
         ...(formData.enableApprovalWindow ? {
           creatorDeterminationPaymentEth: parseFloat(formData.creatorPaymentEth),
