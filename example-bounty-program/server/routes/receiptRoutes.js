@@ -7,6 +7,7 @@ const fs = require('fs');
 const { config } = require('../config');
 const jobStorage = require('../utils/jobStorage');
 const { bountyAmountWei } = require('../utils/bountyAmounts');
+const { getEthPriceUsd } = require('../utils/ethPrice');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -169,17 +170,9 @@ async function loadReceiptData(jobId, submissionId) {
 }
 
 async function fetchEthPrice() {
-  try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
-      { timeout: 5000 }
-    );
-    const data = await response.json();
-    return data?.ethereum?.usd || null;
-  } catch (err) {
-    logger.warn('Failed to fetch ETH price', { error: err.message });
-    return null;
-  }
+  // Shared source/cache with GET /api/jobs/eth-price; a stale last-known price is fine for receipts.
+  const { usd } = await getEthPriceUsd();
+  return usd > 0 ? usd : null;
 }
 
 function formatEthAmount(weiAmount) {

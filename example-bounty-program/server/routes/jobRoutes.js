@@ -13,6 +13,7 @@ const os = require('os');
 const fs = require('fs').promises;
 const AdmZip = require('adm-zip');
 const logger = require('../utils/logger');
+const { getEthPriceUsd } = require('../utils/ethPrice');
 const jobStorage = require('../utils/jobStorage');
 const { packageRubricHash } = require('../utils/rubricSource');
 const { config } = require('../config');
@@ -3295,36 +3296,14 @@ router.get('/:jobId/task-spec', async (req, res) => {
 });
 
 // ==========================================================================
-// Utility: ETH price proxy (avoids client-side CORS issues with CoinGecko)
+// Utility: ETH price proxy (Coinbase spot, CoinGecko fallback; see utils/ethPrice).
 // Must be above /:jobId to avoid "eth-price" being matched as a job ID.
 // ==========================================================================
 
-let cachedEthPrice = { usd: 0, fetchedAt: 0 };
-const ETH_PRICE_CACHE_MS = 60000; // 1 minute
-
 router.get('/eth-price', async (req, res) => {
-  const now = Date.now();
-  if (cachedEthPrice.usd > 0 && (now - cachedEthPrice.fetchedAt) < ETH_PRICE_CACHE_MS) {
-    return res.json({ usd: cachedEthPrice.usd, cached: true });
-  }
-
-  try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
-      { signal: AbortSignal.timeout(5000) }
-    );
-    const data = await response.json();
-    const usd = data?.ethereum?.usd || 0;
-
-    if (usd > 0) {
-      cachedEthPrice = { usd, fetchedAt: now };
-    }
-
-    return res.json({ usd });
-  } catch (err) {
-    // Return stale cache if available, otherwise 0
-    return res.json({ usd: cachedEthPrice.usd || 0, stale: true });
-  }
+  // Response contract: { usd, source?, cached? } on success; { usd, stale: true, ... }
+  // when every source fails (usd is 0 if no price has been seen since startup).
+  return res.json(await getEthPriceUsd());
 });
 
 /* =================
