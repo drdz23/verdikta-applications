@@ -1,3 +1,4 @@
+import { rubricWeights } from '../utils/rubricWeights';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -118,7 +119,7 @@ function CreateBounty({ walletState }) {
     enableApprovalWindow: false,
     creatorPaymentEth: '0.001',
     arbiterPaymentEth: '0.001',
-    approvalWindowHours: '1',
+    approvalWindowHours: '0.5',
     // Off-chain visibility flag — creators can opt in to convenient public
     // preview/download of submitted work. CIDs are public regardless; this
     // just surfaces buttons on the website. Revocable later from the bounty
@@ -140,20 +141,7 @@ function CreateBounty({ walletState }) {
   const hasAtLeastOneCriterion = () =>
     Array.isArray(rubric.criteria) && rubric.criteria.length > 0;
 
-  const validateWeights = () => {
-    const scoredCriteria = (rubric.criteria || []).filter((c) => !c.must);
-    const totalWeight = scoredCriteria.reduce((sum, c) => sum + (Number(c.weight) || 0), 0);
-    return {
-      valid: Math.abs(totalWeight - 1.0) < 0.01,
-      totalWeight,
-      message:
-        totalWeight < 0.99
-          ? `Weights sum to ${totalWeight.toFixed(2)} (should be 1.00)`
-          : totalWeight > 1.01
-          ? `Weights sum to ${totalWeight.toFixed(2)} (should be 1.00)`
-          : 'Valid',
-    };
-  };
+  const validateWeights = () => rubricWeights(rubric.criteria);
 
   const validateJuryWeights = () => {
     const totalWeight = juryNodes.reduce((sum, node) => sum + (Number(node.weight) || 0), 0);
@@ -710,6 +698,9 @@ function CreateBounty({ walletState }) {
       if (!formData.approvalWindowHours || parseFloat(formData.approvalWindowHours) <= 0) {
         toast.warning('Approval window must be > 0 hours'); return;
       }
+      if (Number(formData.approvalWindowHours) * 3600 + 2 >= Number(formData.submissionWindowHours) * 3600) {
+        toast.warning('Submission window must exceed the approval window by more than 2 seconds'); return;
+      }
     }
 
     const juryValidation = validateJuryWeights();
@@ -1090,7 +1081,7 @@ function CreateBounty({ walletState }) {
                         id="approvalWindowHours"
                         value={formData.approvalWindowHours}
                         onChange={(e) => setFormData((prev) => ({ ...prev, approvalWindowHours: e.target.value }))}
-                        placeholder="1"
+                        placeholder="0.5"
                         step="0.5"
                         min="0.5"
                       />

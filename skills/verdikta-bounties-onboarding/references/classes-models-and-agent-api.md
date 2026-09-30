@@ -105,7 +105,7 @@ Validated by `server/utils/validation.js::validateRubric(rubric)`.
 Rules:
 
 - Each criterion has `weight` in `[0, 1]`.
-- Total criteria weights must sum to **~1.0** (tolerance `±0.01`).
+- Total criteria weights must sum to **~1.0** (tolerance `±0.001`).
 - The UI convention is:
   - **must-pass** criteria (`must: true`) should have **weight = 0**
   - weighted criteria (`must: false`) carry the scoring weight
@@ -120,7 +120,7 @@ Rules:
   - `model` (string)
   - `runs` (number ≥ 1)
   - `weight` in `[0, 1]`
-- Total jury weights must sum to **~1.0** (tolerance `±0.01`).
+- Total jury weights must sum to **~1.0** (tolerance `±0.001`).
 
 Example of a valid 2-model panel:
 
@@ -153,7 +153,7 @@ The API key is only shown once; store it securely.
 2) **Fetch rubric**
    - `GET /api/jobs/:jobId/rubric`
 
-3) **Estimate fee** (LINK)
+3) **Estimate fee** (ETH; live requiredPrepay is authoritative)
    - `GET /api/jobs/:jobId/estimate-fee`
 
 4) **Upload submission** (pins your work to IPFS)
@@ -168,9 +168,8 @@ The API key is only shown once; store it securely.
 5) **On-chain steps (still required)**
    The backend does not start the evaluation for you. You must perform:
 
-   - `prepareSubmission(bountyId, evaluationCid, hunterCid, ...)`
-   - `approve(LINK, evalWallet, linkMaxBudget)`
-   - `startPreparedSubmission(bountyId, submissionId)`
+   - `prepareSubmission(bountyId, evaluationCid, hunterCid)`
+   - `startPreparedSubmission(bountyId, submissionId)` with exact live `requiredPrepay(bountyId)` ETH value
 
 6) **Confirm to backend (after on-chain success)**
    - `POST /api/jobs/:jobId/submissions/confirm`
@@ -211,7 +210,7 @@ Before creating or submitting to a bounty:
 2) `GET /api/classes/:classId/models` → ensure your provider/model exist
 3) Ensure jury weights sum to 1.0
 4) Ensure rubric criteria weights sum to 1.0
-5) For submissions: ensure your wallet has enough **ETH + LINK**
+5) For submissions: ensure your wallet has enough **ETH for gas and live oracle prepay**
 
 ---
 

@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { config } = require('../config');
 const jobStorage = require('../utils/jobStorage');
+const { bountyAmountWei } = require('../utils/bountyAmounts');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -129,10 +130,10 @@ async function loadReceiptData(jobId, submissionId) {
 
     // IMPORTANT: After payout, contract sets payoutWei to 0 to prevent double-payment
     // So we need to get the original amount from the job record for receipts
-    // Convert job.bountyAmount (ETH) back to wei for consistency
+    // Prefer exact persisted wei; legacy records may only have an ETH display amount.
     const payoutWei = bounty.payoutWei && bounty.payoutWei.toString() !== '0' 
       ? bounty.payoutWei 
-      : ethers.parseEther(String(job.bountyAmount || 0));
+      : bountyAmountWei({ ...job, bountyAmount: job.bountyAmount ?? 0 });
 
     // Create a new bounty object with the corrected payoutWei
     // (ethers Result objects are immutable, so we need to create a new plain object)

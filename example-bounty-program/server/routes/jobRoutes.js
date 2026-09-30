@@ -4,6 +4,7 @@
  */
 
 const { ethers } = require('ethers');
+const { bountyAmountWei, bountyAmountFields } = require('../utils/bountyAmounts');
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -16,7 +17,7 @@ const jobStorage = require('../utils/jobStorage');
 const { packageRubricHash } = require('../utils/rubricSource');
 const { config } = require('../config');
 const archiveGenerator = require('../utils/archiveGenerator');
-const { validateRubric, validateJuryNodes, isValidFileType, MAX_FILE_SIZE,
+const { validateRubric, validateJuryNodes, normalizeBountyPayments, validateProcurement, isValidFileType, MAX_FILE_SIZE,
         oracleUnreadableReason, detectBinaryContainer, ALLOWED_ZIP_BASED_EXTENSIONS,
         parseFeeToWei, extractEvaluationWarnings } = require('../utils/validation');
 const { getVerdiktaService, isVerdiktaServiceAvailable } = require('../utils/verdiktaService');
@@ -125,7 +126,7 @@ function jobOracleSettings(job) {
  */
 function buildCreateBountyTx(job) {
   const oracle = jobOracleSettings(job);
-  const amountWei = ethers.parseEther(String(job.bountyAmount));
+  const amountWei = bountyAmountWei(job);
   const windowed = Number(job.creatorAssessmentWindowSize || 0) > 0 && job.creatorDeterminationPayment != null;
   const creatorPayWei = windowed ? ethers.parseEther(String(job.creatorDeterminationPayment)) : amountWei;
   const arbiterPayWei = windowed ? ethers.parseEther(String(job.arbiterDeterminationPayment)) : amountWei;
@@ -340,8 +341,6 @@ router.post('/create', async (req, res) => {
   logger.info('[jobs/create] incoming keys', { keys });
 
   try {
-    await ensureTmpBase();
-
     const {
       title,
       description,
@@ -397,12 +396,17 @@ router.post('/create', async (req, res) => {
     if (!/^0x[a-fA-F0-9]{40}$/.test(creator)) {
       return res.status(400).json({ error: 'Invalid creator address', details: 'Must be a valid Ethereum address' });
     }
-    if (targetHunter && !/^0x[a-fA-F0-9]{40}$/.test(targetHunter)) {
-      return res.status(400).json({ error: 'Invalid targetHunter address', details: 'Must be a valid Ethereum address' });
+    const procurementError = validateProcurement(req.body?.procurementMode, targetHunter);
+    if (procurementError) return res.status(400).json({ error: req.body?.procurementMode == null ? 'Invalid targetHunter address' : 'Invalid procurement intent', details: procurementError });
+    let payments;
+    try { payments = normalizeBountyPayments(req.body); }
+    catch (error) {
+      const label = error.code === 'INVALID_BOUNTY_WINDOW' ? 'Invalid bounty window'
+        : error.field === 'bountyAmount' && req.body?.procurementMode == null ? 'Invalid bountyAmount'
+        : 'Invalid bounty payment';
+      return res.status(400).json({ error: label, details: error.message });
     }
-    if (!Number.isFinite(Number(bountyAmount)) || Number(bountyAmount) <= 0) {
-      return res.status(400).json({ error: 'Invalid bountyAmount', details: 'Must be a positive number' });
-    }
+    const normalizedTarget = !targetHunter || ethers.getAddress(targetHunter) === ethers.ZeroAddress ? null : ethers.getAddress(targetHunter);
     if (!Number.isFinite(Number(threshold)) || Number(threshold) < 0 || Number(threshold) > 100) {
       return res.status(400).json({ error: 'Invalid threshold', details: 'Threshold must be between 0 and 100' });
     }
@@ -468,6 +472,8 @@ router.post('/create', async (req, res) => {
     if (!rubricJson && !rubricCidIn) {
       return res.status(400).json({ error: 'Missing rubric', details: 'Provide rubricJson or rubricCid' });
     }
+
+    await ensureTmpBase();
 
     // ---- Resolve rubricCid ----
     let rubricCid;
@@ -618,7 +624,7 @@ router.post('/create', async (req, res) => {
             jobId: existing.jobId,
             title: existing.title,
             description: existing.description,
-            bountyAmount: existing.bountyAmount,
+            ...bountyAmountFields(existing),
             bountyAmountUSD: existing.bountyAmountUSD,
             threshold: existing.threshold,
             rubricCid: existing.rubricCid,
@@ -638,7 +644,7 @@ router.post('/create', async (req, res) => {
     // ---- Times ----
     const now = Math.floor(Date.now() / 1000);
     const submissionOpenTime = now;
-    const submissionCloseTime = now + (Number(submissionWindowHours) * 3600);
+    const submissionCloseTime = now + payments.submissionWindowSeconds;
 
     // ---- Persist job ----
     const job = await jobStorage.createJob({
@@ -646,7 +652,7 @@ router.post('/create', async (req, res) => {
       description,
       workProductType,
       creator,
-      bountyAmount: Number(bountyAmount),
+      ...payments,
       bountyAmountUSD: Number(bountyAmountUSD || 0),
       threshold: Number(threshold),
       rubricCid,
@@ -656,13 +662,8 @@ router.post('/create', async (req, res) => {
       iterations: Number(iterations),
       submissionOpenTime,
       submissionCloseTime,
-      targetHunter: targetHunter || null,
+      targetHunter: normalizedTarget,
       publicSubmissions: !!publicSubmissions,
-      ...(creatorDeterminationPayment != null ? {
-        creatorDeterminationPayment: String(creatorDeterminationPayment),
-        arbiterDeterminationPayment: String(arbiterDeterminationPayment),
-        creatorAssessmentWindowSize: Math.trunc(Number(creatorAssessmentWindowHours) * 3600),
-      } : {}),
       // Creator-chosen oracle request settings (wei strings + integers). Passed
       // verbatim into createBounty's `oracle` struct and used for every evaluation.
       oracleSettings,
@@ -677,6 +678,7 @@ router.post('/create', async (req, res) => {
         title: job.title,
         description: job.description,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         bountyAmountUSD: job.bountyAmountUSD,
         threshold: job.threshold,
         rubricCid: job.rubricCid,
@@ -991,6 +993,7 @@ router.get('/admin/expired', async (req, res) => {
         title: job.title,
         creator: job.creator,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         deadline,
         expiredMinutesAgo: Math.floor((nowSeconds - deadline) / 60),
         localStatus: job.status,
@@ -1125,6 +1128,7 @@ router.get('/mine/action-required', async (req, res) => {
         jobId: job.jobId,
         title: job.title,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         deadline,
         expiredMinutesAgo: Math.floor((nowSeconds - deadline) / 60),
         canClose: false,
@@ -2052,7 +2056,7 @@ router.post('/:jobId/submissions/:submissionId/finalize', async (req, res) => {
 
     if (oracleResult) {
       response.oracleResult = oracleResult;
-      if (oracleResult.passed && job.bountyAmount) {
+      if (oracleResult.passed && Number(job.bountyAmount) > 0) {
         response.expectedPayout = job.bountyAmount;
       }
     }
@@ -2828,6 +2832,7 @@ router.get('/', async (req, res) => {
         description: job.description,
         workProductType: job.workProductType,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         bountyAmountUSD: job.bountyAmountUSD,
         threshold: job.threshold,
         classId: job.classId,

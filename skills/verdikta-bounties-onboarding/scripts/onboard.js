@@ -9,10 +9,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Wallet, formatEther, formatUnits, Contract } from 'ethers';
+import { Wallet, formatEther } from 'ethers';
 
 import './_env.js';
-import { providerFor, loadWallet, LINK, ERC20_ABI, resolvePath, arg, hasFlag } from './_lib.js';
+import { providerFor, loadWallet, resolvePath, arg, hasFlag } from './_lib.js';
 import { defaultSecretsDir, ensureDir } from './_paths.js';
 
 function envNum(name, def) {
@@ -184,33 +184,12 @@ async function ensureWalletKeystore({ keystorePath, password, rl }) {
   return { wallet, abs, created: true, imported: false };
 }
 
-async function waitForFunding({ network, address, minEth, minLink, pollSeconds }) {
+async function waitForFunding({ network, address, minEth, pollSeconds }) {
   const provider = providerFor(network);
-  const linkAddr = LINK[network];
-  const link = new Contract(linkAddr, ERC20_ABI, provider);
-
-  // Poll until both are satisfied.
   while (true) {
-    const [ethBal, lbal, dec] = await Promise.all([
-      provider.getBalance(address),
-      link.balanceOf(address),
-      link.decimals(),
-    ]);
-
-    const eth = Number(formatEther(ethBal));
-    const linkHuman = Number(formatUnits(lbal, dec));
-
-    const okEth = eth >= minEth;
-    const okLink = linkHuman >= minLink;
-
-    console.log(`\nFunding status (${network})`);
-    console.log(`Address: ${address}`);
-    console.log(`ETH:  ${eth.toFixed(6)} (need ≥ ${minEth}) ${okEth ? '✓' : '…'}`);
-    console.log(`LINK: ${linkHuman.toFixed(6)} (need ≥ ${minLink}) ${okLink ? '✓' : '…'}`);
-
-    if (okEth && okLink) return { eth, link: linkHuman };
-
-    console.log(`\nWaiting for funding… (poll every ${pollSeconds}s, Ctrl+C to stop)`);
+    const eth = Number(formatEther(await provider.getBalance(address)));
+    console.log(`Funding status (${network}): ${eth} ETH; configured minimum ${minEth} ETH. Live prepay and gas are checked at execution.`);
+    if (eth >= minEth) return { eth };
     await new Promise(r => setTimeout(r, pollSeconds * 1000));
   }
 }
@@ -369,7 +348,7 @@ async function main() {
 
     // 7) Funding (human action)
     const minEth = envNum('MIN_ETH', network === 'base-sepolia' ? 0.01 : 0.005);
-    const minLink = envNum('MIN_LINK', network === 'base-sepolia' ? 1.0 : 1.0);
+
     const pollSeconds = envNum('FUNDING_POLL_SECONDS', 15);
 
     console.log('\nHuman action required: fund the bot wallet');
@@ -380,11 +359,11 @@ async function main() {
       console.log(`  on the ${network} network to the address below.\n`);
     }
     console.log(`- Send ETH on ${network} to: ${wallet.address}`);
-    console.log(`- Send LINK on ${network} to: ${wallet.address}`);
-    console.log(`Targets: ≥ ${minEth} ETH and ≥ ${minLink} LINK`);
+
+    console.log(`Target: ≥ ${minEth} ETH; no LINK is required.`);
 
     if (!hasFlag('no-wait')) {
-      await waitForFunding({ network, address: wallet.address, minEth, minLink, pollSeconds });
+      await waitForFunding({ network, address: wallet.address, minEth, pollSeconds });
     } else {
       console.log('(Skipping funding wait due to --no-wait)');
     }
@@ -452,7 +431,7 @@ async function main() {
     if (!(runWorker === 'n' || runWorker === 'no')) {
       const { spawn } = await import('node:child_process');
       await new Promise((resolve, reject) => {
-        const p = spawn(process.execPath, ['bounty_worker_min.js'], {
+        const p = spawn(process.execPath, [fileURLToPath(new URL('./bounty_worker_min.js', import.meta.url))], {
           stdio: 'inherit',
           env: { ...process.env, VERDIKTA_BOT_FILE: botOut }
         });
