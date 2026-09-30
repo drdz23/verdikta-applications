@@ -34,4 +34,31 @@ function bountyAmountFields(job) {
   return { bountyAmount: Number(ethers.formatEther(wei)), bountyAmountWei: wei.toString() };
 }
 
-module.exports = { parseEthAmountWei, bountyAmountWei, bountyAmountFields };
+/**
+ * The amount a bounty was FUNDED with, from a raw on-chain Bounty struct.
+ *
+ * `payoutWei` is the live escrow balance: the contract zeroes it on payout and
+ * on refund, so it cannot be used as the bounty's amount once the bounty is
+ * terminal (bounty 0..102 on Base were briefly displayed as 0 ETH on
+ * 2026-09-30 for exactly this reason). The two determination payments are set
+ * once in createBounty and never written again, and the escrow is defined as
+ * their maximum, so max(creator, arbiter) is the original amount at any point
+ * in the bounty's life. payoutWei is only a fallback for a struct that lacks
+ * the payment fields.
+ */
+function fundedBountyWei(bounty) {
+  const toWei = (v) => (v == null ? null : BigInt(v));
+  const creator = toWei(bounty.creatorDeterminationPayment);
+  const arbiter = toWei(bounty.arbiterDeterminationPayment);
+  if (creator != null && arbiter != null) {
+    const funded = creator > arbiter ? creator : arbiter;
+    if (funded > 0n) return funded;
+  }
+  return toWei(bounty.payoutWei) ?? 0n;
+}
+
+function fundedBountyAmountFields(bounty) {
+  return bountyAmountFields({ bountyAmountWei: fundedBountyWei(bounty).toString() });
+}
+
+module.exports = { parseEthAmountWei, bountyAmountWei, bountyAmountFields, fundedBountyWei, fundedBountyAmountFields };

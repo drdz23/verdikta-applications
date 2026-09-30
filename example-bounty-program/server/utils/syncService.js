@@ -195,6 +195,32 @@ function findPendingJobForBountyCreated(jobs, { evaluationCid, creator, deadline
   ) || null;
 }
 
+/**
+ * Phase D.6 candidate rule: does this synced job need a getBounty() re-read to
+ * backfill chain-authoritative fields? Pure, so it is unit-testable.
+ *
+ *  - Windowed/target/oracle fields missing and never healed (original rule).
+ *  - bountyAmountWei missing (legacy float-only record), even if the record was
+ *    healed before that field existed; `_weiBackfillAttempted` stops a record
+ *    from being retried every cycle if a successful read still yields no wei.
+ */
+function needsChainFieldHeal(job, currentContract, bountyCount) {
+  if (!job) return false;
+  if ((job.contractAddress || '').toLowerCase() !== currentContract) return false;
+  if (job.syncedFromBlockchain !== true) return false;
+  if (job.status === 'ORPHANED') return false;
+  if (typeof job.jobId !== 'number' || !(job.jobId < bountyCount)) return false;
+
+  const missingChainFields = job.creatorDeterminationPayment == null ||
+    job.targetHunter === null || job.oracleSettings == null;
+  if (!job._chainFieldsHealed && missingChainFields) return true;
+
+  // '0' is never a legitimate amount (createBounty requires value > 0); it is
+  // the signature of a record written from a drained payoutWei — re-read it.
+  const weiMissing = job.bountyAmountWei == null || job.bountyAmountWei === '0';
+  return weiMissing && !job._weiBackfillAttempted;
+}
+
 function applyChainBountyFields(localJob, chainBounty) {
   if (!localJob || !chainBounty) return false;
   let changed = false;
@@ -240,8 +266,14 @@ function applyChainBountyFields(localJob, chainBounty) {
   if (chainBounty.threshold != null) set('threshold', Number(chainBounty.threshold));
   if (chainBounty.bountyAmountWei != null || chainBounty.bountyAmount != null) {
     const amounts = bountyAmountFields(chainBounty);
-    set('bountyAmount', amounts.bountyAmount);
-    set('bountyAmountWei', amounts.bountyAmountWei);
+    // Defensive: never replace a known nonzero amount with zero. A zero here
+    // means the reader handed us a drained escrow balance, not the bounty amount.
+    const localNonzero = Number(localJob.bountyAmount) > 0 ||
+      (localJob.bountyAmountWei != null && localJob.bountyAmountWei !== '0');
+    if (amounts.bountyAmountWei !== '0' || !localNonzero) {
+      set('bountyAmount', amounts.bountyAmount);
+      set('bountyAmountWei', amounts.bountyAmountWei);
+    }
   }
   if (chainBounty.submissionCloseTime != null) set('submissionCloseTime', Number(chainBounty.submissionCloseTime));
   if (chainBounty.createdAt != null) {
@@ -692,14 +724,13 @@ class SyncService {
     // has been healed, _chainFieldsHealed=true keeps it out of the candidate
     // set forever). Per-cycle cap of 50 keeps a large backlog from blocking
     // the sync loop.
+    //
+    // Exact-amount backfill (2026-09-30): records written before bountyAmountWei
+    // existed carry only the float display amount. Those are picked up here too,
+    // regardless of the healed marker, so receipts/calldata stop re-deriving wei
+    // from a rounded number. See needsChainFieldHeal().
     const healCandidates = storage.jobs.filter(j =>
-      (j.contractAddress || '').toLowerCase() === currentContract &&
-      j.syncedFromBlockchain === true &&
-      j.status !== 'ORPHANED' &&
-      typeof j.jobId === 'number' &&
-      j.jobId < bountyCount &&
-      !j._chainFieldsHealed &&
-      (j.creatorDeterminationPayment == null || j.targetHunter === null || j.oracleSettings == null)
+      needsChainFieldHeal(j, currentContract, bountyCount)
     ).slice(0, 50);
 
     if (healCandidates.length > 0) {
@@ -710,13 +741,18 @@ class SyncService {
           const changed = applyChainBountyFields(job, chainBounty);
           job.lastSyncedAt = Math.floor(Date.now() / 1000);
           job._chainFieldsHealed = true;
+          // The chain read succeeded but produced no exact amount (should not
+          // happen — getBounty always maps payoutWei). Mark it so this record
+          // does not cost one RPC call every cycle forever.
+          if (job.bountyAmountWei == null || job.bountyAmountWei === '0') job._weiBackfillAttempted = true;
           if (changed) {
             healed++;
             logger.info('[sync/heal] backfilled chain fields for previously-synced job', {
               jobId: job.jobId,
               targetHunter: job.targetHunter,
               creatorAssessmentWindowSize: job.creatorAssessmentWindowSize,
-              creatorDeterminationPayment: job.creatorDeterminationPayment
+              creatorDeterminationPayment: job.creatorDeterminationPayment,
+              bountyAmountWei: job.bountyAmountWei
             });
           }
         } catch (err) {
@@ -1995,4 +2031,4 @@ module.exports = {
   initializeSyncService,
   getSyncService,
   SyncService,
-  applyChainBountyFields, findPendingJobForBountyCreated };
+  applyChainBountyFields, findPendingJobForBountyCreated, needsChainFieldHeal };
