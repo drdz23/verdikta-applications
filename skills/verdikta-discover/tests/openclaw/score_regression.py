@@ -4,7 +4,8 @@ expected-label-only numbers that the pre-registration requires beside every numb
 
 usage: score_regression.py RATINGS.json KEY.json RESULTS.json [RESULTS.json ...]   (merge_ratings.py writes RATINGS.json and KEY.json)
        score_regression.py --selftest
-The cases directory is the parent of this one; set the environment variable T to use another.
+The cases directory is the parent of this one; set the environment variable T to use another. A targeted run (a subset of the
+cases) is scored on the cases it ran; the others are listed as not run, never counted as failures.
 """
 import json, os, subprocess, sys, tempfile
 
@@ -28,12 +29,14 @@ def score(ratings, key, results_paths, tests=None, files=FILES):
         by = {}
         rated = {x["key"]: x for x in r}
         for a, loc in k.items(): by.setdefault(loc["id"], []).append(rated[a]["decision"])
-        exp_only = {c["id"]: {"expected": c["expected_decision"], "decisions": by.get(c["id"], []),
-                              "pass": sum(d == c["expected_decision"] for d in by.get(c["id"], [])) >= 2} for c in cases}
+        ran = [c for c in cases if c["id"] in by]
+        exp_only = {c["id"]: {"expected": c["expected_decision"], "decisions": by[c["id"]],
+                              "pass": sum(d == c["expected_decision"] for d in by[c["id"]]) >= 2} for c in ran}
         groups = {}
-        for c in cases: groups.setdefault(c["group"], []).append(exp_only[c["id"]]["pass"])
+        for c in ran: groups.setdefault(c["group"], []).append(exp_only[c["id"]]["pass"])
         rep["expected_label_only"] = {g: {"cases_passed": sum(v), "cases": len(v)} for g, v in groups.items()}
         rep["expected_label_only_per_case"] = exp_only
+        rep["not_run"] = sorted(c["id"] for c in cases if c["id"] not in by)
         out[name] = rep
     return out
 
@@ -54,6 +57,9 @@ def selftest():
         rep = score(ratings, key, [rp], tests=d)["authored"]
         assert rep["gates"]["positive"]["cases_passed"] == 1 and rep["expected_label_only"]["positive"]["cases_passed"] == 0, rep
         assert rep["gates"]["negative"]["cases_passed"] == 1 and rep["expected_label_only"]["negative"]["cases_passed"] == 1, rep
+        # a targeted run of X2 only: X1 is listed as not run, not failed
+        only = score([r for r in ratings if r["key"].endswith("X2")], {k: v for k, v in key.items() if v["id"] == "X2"}, [rp], tests=d)["authored"]
+        assert only["not_run"] == ["X1"] and only["expected_label_only"] == {"negative": {"cases_passed": 1, "cases": 1}}, only
     return True
 
 
