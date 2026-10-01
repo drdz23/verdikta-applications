@@ -4,7 +4,7 @@
 # Never passes --deliver. Run only against a throwaway agent with a skill allowlist and a finite
 # tools.allow (see ../EVALUATION_PROTOCOL.md); never against an agent that has a signer.
 set -u
-A=$1; MSGS=$2; OUT=$3; mkdir -p "$OUT"
+A=$1; MSGS=$2; OUT=$3; mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)  # absolute: the export step cd's into $OUT, so a relative path would break its redirect
 for f in "$MSGS"/*.txt; do
   id=$(basename "$f" .txt); lid=$(echo "$id" | tr A-Z a-z); tag=$(basename "$OUT")
   [ -s "$OUT/$id.json" ] && continue

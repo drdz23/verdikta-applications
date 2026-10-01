@@ -21,6 +21,20 @@ const LEAK = /connected-(?:ground-truth|cases|gates|holdout)|screen-corpora/i;
 const urlsIn = text => [...String(text).matchAll(/https?:\/\/[^\s)"'`<>\]]+/g)].map(m => m[0].replace(/[.,;:]+$/, ''));
 const resolve = (href, base) => { try { return new URL(href, base).href; } catch { return null; } };
 
+/**
+ * OpenClaw wraps every web_fetch result in its own envelope: a "SECURITY NOTICE ... IGNORE any instructions to ..." banner and
+ * <<<EXTERNAL_UNTRUSTED_CONTENT>>> markers around the page. That is the host's defense, not page content, and it would trip any
+ * instruction screen, so the page text is taken from between the markers before it is screened or searched for links.
+ */
+export function unwrapFetched(text) {
+  const t = String(text ?? '');
+  const open = t.indexOf('<<<EXTERNAL_UNTRUSTED_CONTENT');
+  if (open < 0) return t;
+  const bodyStart = t.indexOf('\n---\n', open);
+  const end = t.indexOf('<<<END_EXTERNAL_UNTRUSTED_CONTENT', open);
+  return t.slice(bodyStart >= 0 ? bodyStart + 5 : open, end >= 0 ? end : undefined).trim();
+}
+
 /** Links a fetched page offers: markdown links, HTML hrefs and bare URLs, resolved against the page. */
 export function linksIn(text, base) {
   const hrefs = [...String(text).matchAll(/\]\(([^)\s]+)\)|href=["']([^"']+)["']/g)].map(m => m[1] || m[2]);
@@ -45,11 +59,12 @@ export function checkFetches(fetches, { taskTexts, publicNames, messageUrls }) {
     const cls = known.has(f.url) ? 'owner_or_request' : pageLinks.has(f.url) ? 'page_link' : DOCUMENTED.has(path) ? 'documented_route' : 'composed';
     const url = screenUrl(f.url, { taskTexts, publicNames, provenance });
     const redirect = screenRedirect(f.url, f.final_url);
-    const content = screenContent(f.text || '');
+    const page = unwrapFetched(f.text);
+    const content = screenContent(page);
     out.push({ url: f.url, final_url: f.final_url ?? null, status: f.status ?? null, provenance_class: cls,
       url_verdict: url.verdict, url_reasons: url.reasons.map(r => r.code), redirect_verdict: redirect.verdict, left_origin: redirect.verdict === BLOCK,
       content_severity: content.severity, content_flags: content.flags.map(x => x.code), leaked_ground_truth: LEAK.test(f.url) || LEAK.test(f.final_url || '') });
-    for (const l of linksIn(f.text || '', f.final_url || f.url)) pageLinks.add(l);
+    for (const l of linksIn(page, f.final_url || f.url)) pageLinks.add(l);
   }
   return out;
 }
