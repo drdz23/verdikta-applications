@@ -149,6 +149,16 @@ def score(inputs):
             if not got: missing += 1
             tp += len(exp & got); fp += len(got - exp); fn += len(exp - got)
         out['residue_drafted'] = {**prf(tp, fp, fn), 'samples_without_draft': missing}
+        # SUPPLEMENTARY, not a gate: the residue a draft *described in prose* covers, from rater-reported drafted_items, and how drafts were delivered.
+        tp = fp = fn = 0; fmt = {'json_draft': 0, 'prose_only': 0, 'no_draft': 0}
+        for s in group:
+            if 'residue' not in s['case']['metrics']: continue
+            exp = expected_set(s['case']); total = set(case_items(s['case']))
+            said = s['rating'].get('drafted_items') or []
+            got = total if 'ALL' in said else {i for i in said if i in total or '/' in i}
+            tp += len(exp & got); fp += len(got - exp); fn += len(exp - got)
+            fmt['json_draft' if s['assessment'] else ('prose_only' if s['rating'].get('draft_described') else 'no_draft')] += 1
+        out['residue_drafted_in_prose'] = {**prf(tp, fp, fn), 'delivery': fmt}
         # identification in the prose, for every condition
         tp = fp = fn = 0
         for s in group:
