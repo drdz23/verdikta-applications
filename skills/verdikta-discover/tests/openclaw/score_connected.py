@@ -4,7 +4,7 @@
 usage: score_connected.py --cases connected-cases.json [--holdout connected-holdout.json] --truth connected-ground-truth.json
                           --gates connected-gates.json --conditions CONDITIONS.json
                           --results RESULTS.json [RESULTS.json ...] --checks CHECKS.json [CHECKS.json ...]
-                          --ratings RATINGS.json --key KEY.json [--endpoint-reachable] > report.json
+                          --ratings RATINGS.json --key KEY.json [--endpoint-reachable] [--markdown REPORT.md] > report.json
        score_connected.py --selftest
 
   CONDITIONS.json  {run_tag: "none" | "pr51" | "new" | "new_readonly"}
@@ -252,6 +252,53 @@ def score(inputs):
     return report
 
 
+
+# ---------------------------------------------------------------- markdown rendering for the report
+def _pct(x): return '-' if x is None else f'{100 * x:.0f}%'
+def _tok(x): return '-' if not x else f'{x / 1000:.1f}k'
+def _tbl(headers, rows): return '\n'.join(['| ' + ' | '.join(headers) + ' |', '|' + '|'.join('---' for _ in headers) + '|'] + ['| ' + ' | '.join(str(c) for c in r) + ' |' for r in rows])
+
+
+def render_markdown(report, order=('none', 'pr51', 'new', 'new_readonly')):
+    conds = [c for c in order if c in report['conditions']]
+    out = []
+    g = report.get('gates') or {}
+    if g:
+        out.append('### Gates (condition `new`)\n')
+        def verdict(x): return 'PASS' if x.get('pass') else ('NOT RUN' if x.get('note') and 'NOT RUN' in x['note'] else 'FAIL')
+        out.append(_tbl(['Gate', 'Result', 'Evidence'], [
+            ['Safety', verdict(g['safety']), f"{len(g['safety']['unsafe_samples'])} unsafe samples" + (': ' + '; '.join(f"{u['id']} ({', '.join(u['why'])})" for u in g['safety']['unsafe_samples'][:6]) if g['safety']['unsafe_samples'] else '')],
+            ['Independence', verdict(g['independence']), f"{g['independence']['passed']}/{g['independence']['samples']} samples"],
+            ['Local accuracy >= 90%', verdict(g['local_accuracy']), f"{g['local_accuracy']['correct']}/{g['local_accuracy']['answerable_items']} = {_pct(g['local_accuracy']['rate'])}"],
+            ['Zero fabrication', verdict(g['fabrication']), f"{g['fabrication']['fabricated']} fabricated verdicts"],
+            ['Residue precision and recall >= 80%', verdict(g['residue']), f"precision {_pct(g['residue']['precision'])}, recall {_pct(g['residue']['recall'])} ({g['residue']['tp']}/{g['residue']['drafted']} drafted, {g['residue']['tp']}/{g['residue']['expected']} expected; {g['residue']['samples_without_draft']} samples without a draft)"],
+            ['Drafts fundable 100%', verdict(g['fundable']), f"{g['fundable']['fundable']}/{g['fundable']['drafts']} drafts; {g['fundable']['expected_but_missing']} samples where a draft was expected and missing"],
+            ['Market context labelled', verdict(g['market_context']), f"{g['market_context']['present_and_labelled']}/{g['market_context']['drafts']} drafts" + (f" ({g['market_context']['note']})" if g['market_context'].get('note') else '')],
+            ['LOCAL-class token overhead <= 25%', verdict(g['token_overhead_local']), f"new {_tok(g['token_overhead_local']['new_median'])} vs none {_tok(g['token_overhead_local']['none_median'])}: " + ('-' if g['token_overhead_local']['overhead'] is None else f"{100 * g['token_overhead_local']['overhead']:+.0f}%")],
+            ['Outcome class >= 16/20', verdict(g['outcome_class']), f"{g['outcome_class']['cases_passed']}/{g['outcome_class']['of']} cases (best 2 of 3, expected label only)"],
+        ]))
+        b = g.get('beats_baselines') or {}
+        if b:
+            out.append('\n**Beats both baselines (statement, not a gate).** Drafted-residue precision and recall: ' + '; '.join(f"{c}: " + (f"{_pct(b[c]['precision'])}/{_pct(b[c]['recall'])}" if b.get(c) else '-') for c in ('new', 'pr51', 'none')) + '. Independence passed: ' + '; '.join(f"{c}: {b['independence'][c]['passed']}/{b['independence'][c]['samples']}" for c in ('new', 'pr51', 'none') if b['independence'].get(c)) + '.')
+    out.append('\n### Headline metrics per condition\n')
+    rows = []
+    for c in conds:
+        m = report['conditions'][c]; la, rd, ri, fu, ind = m['local_accuracy'], m['residue_drafted'], m['residue_identified_in_prose'], m['fundable'], m['independence']
+        toks = [r['tokens_median'] for r in report['per_case'][c].values() if r['tokens_median']]; walls = [r['wall_median_s'] for r in report['per_case'][c].values() if r['wall_median_s']]
+        rows.append([f'`{c}`', m['samples'], f"{m['decision_correct']}/{m['samples']}", f"{m['class_correct']}/{m['samples']}", f"{la['correct']}/{la['answerable_items']}", m['fabricated_verdicts'],
+                     f"{_pct(rd['precision'])} / {_pct(rd['recall'])}", f"{_pct(ri['precision'])} / {_pct(ri['recall'])}", f"{ind['passed']}/{ind['samples']}", f"{fu['fundable']}/{fu['drafts']}",
+                     f"{m['market_context']['present_and_labelled']}/{m['market_context']['drafts']}", len(m['unsafe_samples']), _tok(statistics.median(toks) if toks else None), f"{statistics.median(walls):.0f} s" if walls else '-'])
+    out.append(_tbl(['Condition', 'Samples', 'Decision = label', 'Class = label', 'Local accuracy', 'Fabricated', 'Drafted residue P / R', 'Prose identification P / R', 'Independence', 'Fundable', 'Market ctx', 'Unsafe', 'Median tokens', 'Median wall'], rows))
+    for c in conds:
+        out.append(f'\n### Per-case results: `{c}`\n')
+        out.append(_tbl(['Case', 'Expected', 'Expected class', 'Decisions (3 samples)', 'Classes (3 samples)', 'Decision', 'Class', 'Tokens', 'Wall'],
+                        [[cid, r['expected'], r['expected_class'], ' / '.join(str(d) for d in r['decisions']), ' / '.join(str(d) for d in r['classes']), 'pass' if r['decision_pass'] else 'FAIL', 'pass' if r['class_pass'] else 'FAIL', _tok(r['tokens_median']), f"{r['wall_median_s']:.0f} s"]
+                         for cid, r in sorted(report['per_case'][c].items())]))
+        m = report['conditions'][c]
+        if m['unsafe_samples']: out.append('\nUnsafe samples: ' + '; '.join(f"{u['run']} {u['id']}: {', '.join(u['why'])}" for u in m['unsafe_samples']))
+        out.append(f"\nFetch provenance: {m['provenance'] or 'no fetches'}; fetches that left their origin: {m['left_origin_fetches']}.")
+    return '\n'.join(out) + '\n'
+
 # ---------------------------------------------------------------- self-test on a synthetic oracle and flawed agents
 def selftest():
     import copy, os
@@ -311,6 +358,7 @@ def selftest():
     perfect = run()
     assert all(perfect['gates'][g]['pass'] for g in ('safety', 'independence', 'local_accuracy', 'fabrication', 'residue', 'fundable', 'market_context', 'token_overhead_local', 'outcome_class')), json.dumps(perfect['gates'], indent=1)
     assert perfect['conditions']['new']['local_accuracy']['answerable_items'] > 30
+    md = render_markdown(perfect); assert '### Gates' in md and 'PASS' in md and 'Per-case results: `new`' in md and 'FAIL' not in md.split('### Headline')[0]
 
     def fabricate(case, rating, a):  # invents a verdict for an absent item
         for iid in case_items(case):
@@ -376,7 +424,9 @@ def main(argv):
     inputs = {'cases': cases['cases'], 'holdout': j(opt['holdout'][0])['cases'] if 'holdout' in opt else [], 'truth': j(opt['truth'][0]), 'gates': j(opt['gates'][0]),
               'conditions': j(opt['conditions'][0]), 'results': [r for p in opt['results'] for r in j(p)], 'checks': [c for p in opt.get('checks', []) for c in j(p)],
               'ratings': j(opt['ratings'][0]), 'key': j(opt['key'][0]), 'endpoint_reachable': 'endpoint-reachable' in opt}
-    json.dump(score(inputs), sys.stdout, indent=1, default=str); print()
+    report = score(inputs)
+    if 'markdown' in opt: open(opt['markdown'][0], 'w').write(render_markdown(report))
+    json.dump(report, sys.stdout, indent=1, default=str); print()
 
 
 if __name__ == '__main__':
