@@ -342,7 +342,7 @@ Run on `vps-moltbot2` (OpenClaw 2026.8.33, `openai/gpt-5.6-terra`): 180 connecte
 | Independence (CI01-CI03) | 0/9 with a JSON draft and `local_summary`; 9/9 if a draft described in prose counts | **FAIL** |
 | Local accuracy >= 90% | 198/198 (baselines also 100%) | PASS |
 | Zero fabrication | 0 (baselines 12 and 12, all on the redirect case) | PASS |
-| Residue precision and recall >= 80% | no JSON draft in 33 residue-scored samples (1 JSON draft, 25 prose only, 7 none): recall 0%. From the prose: precision 100%, recall 73% | **FAIL** |
+| Residue precision and recall >= 80% | no usable draft in 33 of 33 residue-scored samples (1 JSON draft with no readable request, 25 prose only, 7 none): recall 0%. From the prose: precision 100%, recall 73% | **FAIL** |
 | Drafts fundable | 0 of 2 drafts pass `validatePreview` and the binder; a draft was expected in 36 samples | **FAIL** |
 | Market context labelled | 0/2 drafts. The live endpoint answered 200 in 30/30 drafting-path samples and the answers called it "not a quote" | **FAIL** (as registered) |
 | LOCAL-class token overhead <= 25% | +5% | PASS |
