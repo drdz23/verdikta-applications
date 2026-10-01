@@ -50,3 +50,30 @@ test('a hybrid draft binds like any other and local findings never reach the com
     await assert.rejects(applyWorkOrder(config),/SHA-256 commitment/);
   } finally {await rm(dir,{recursive:true,force:true});}
 });
+
+test('the binder and the shared verifier accept and reject the same drafts and compose the same description',async()=>{
+  const { checkWorkOrderDraft, composeEvaluationDescription } = await import('../../../verdikta-discover/scripts/work-order.mjs');
+  const dir=await mkdtemp(`${tmpdir()}/verdikta-parity-`);
+  try {
+    const request=JSON.parse(await readFile(new URL('../../../verdikta-discover/examples/source-check-v1.request.json',import.meta.url),'utf8'));
+    request.fixture_only=false;request.task_id='parity-\u00e9\u4e2d';request.claims[0].text='Unicode claim: caf\u00e9 \u2013 \u4e2d\u6587.';
+    const target='0x1111111111111111111111111111111111111111';
+    const good=[preview({request,sharing_authorized:true,procurement_mode:'OPEN'}),preview({request,sharing_authorized:true,procurement_mode:'TARGETED',targetHunter:target})];
+    const bad=[];
+    for (const mutate of [a=>{a.draft.threshold=10;},a=>{a.draft.rubric.criteria[0].label='x';},a=>{a.quote_status='QUOTED';},a=>{a.decision='LOCAL';},a=>{a.draft.request.fixture_only=true;},a=>{a.procurement={mode:'OPEN',targetHunter:null};}]) {
+      const a=structuredClone(good[1]);mutate(a);bad.push(a);
+    }
+    let n=0;
+    for (const a of [...good,...bad]) {
+      const raw=JSON.stringify(a),file=`${dir}/draft-${n++}.json`;await writeFile(file,raw);
+      const digest=createHash('sha256').update(raw).digest('hex');
+      const config={workOrderDraftSha256:digest,workOrderDraft:file,description:'Parity \u00e9',rubricJson:a.draft?.rubric,threshold:a.draft?.threshold,procurementMode:a.draft?.procurement?.mode,targetHunter:a.draft?.procurement?.targetHunter};
+      const shared=checkWorkOrderDraft(a);
+      if (shared.ok) {
+        const bound=await applyWorkOrder(config);
+        assert.equal(bound.description,composeEvaluationDescription({baseDescription:config.description,draftSha256:digest,templateId:a.draft.template_id,request:a.draft.request}).description);
+      } else await assert.rejects(applyWorkOrder(config),new RegExp(shared.errors[0].replace(/[.*+?^${}()|[\]\\]/g,'\\$&').slice(0,40)));
+    }
+    assert.equal(good.every(a=>checkWorkOrderDraft(a).ok),true);assert.equal(bad.some(a=>checkWorkOrderDraft(a).ok),false);
+  } finally {await rm(dir,{recursive:true,force:true});}
+});

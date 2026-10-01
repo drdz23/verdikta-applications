@@ -138,3 +138,12 @@ test('an independent review keeps every item in the draft; the local pass is inf
   }
   assert.equal(make(residualRequest(), pass).decision, 'NEEDS_SCOPE', 'a partial request cannot carry a non-independent pass');
 });
+
+test('what preview() returns is a copy: mutating a draft cannot corrupt the shared templates', () => {
+  const a = make(original, undefined);
+  a.draft.rubric.criteria[0].description = 'EDITED'; a.acceptance_criteria[0].description = 'EDITED'; a.commissioning_requirements.push('EDITED');
+  const b = make(original, undefined);
+  assert.notEqual(b.draft.rubric.criteria[0].description, 'EDITED');
+  assert.notEqual(b.acceptance_criteria[0].description, 'EDITED');
+  assert.ok(!b.commissioning_requirements.includes('EDITED'));
+});

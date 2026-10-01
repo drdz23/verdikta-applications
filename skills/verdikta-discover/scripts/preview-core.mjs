@@ -6,6 +6,8 @@ import sourceRubric from '../templates/source-check-v1.rubric.json' with { type:
 import packRubric from '../templates/evidence-pack-v1.rubric.json' with { type: 'json' };
 export const templates = { 'source-check-v1': sourceTemplate, 'evidence-pack-v1': packTemplate };
 const rubrics = { 'source-check-v1': sourceRubric, 'evidence-pack-v1': packRubric };
+// What leaves preview() is the caller's to mutate: never hand out the shared template objects themselves.
+const own = value => (value === undefined ? undefined : structuredClone(value));
 // Pure assessment of caller-declared context, not an NLP classifier or purchase authority.
 export function preview(input = {}) {
   const { request, task_summary = '', template_id, local_sufficient = false,
@@ -55,16 +57,16 @@ export function preview(input = {}) {
     costs: { reward_wei: null, buyer_gas_estimate_wei: null, evaluation_prepay_estimate_wei: null, explanation: 'No supplier offer or live fee observation exists in this local preview.' },
     can_commission: false, authorization_granted: false, funds_moved: false,
     procurement,
-    deliverable: template?.delivery || [], acceptance_criteria: rubrics[kind]?.criteria || [],
+    deliverable: own(template?.delivery) || [], acceptance_criteria: own(rubrics[kind]?.criteria) || [],
     inputs_needed: ['LOCAL','UNSUITABLE'].includes(decision) ? [] : inputsNeeded,
     risks: ['Later publication may expose task data.', 'No supplier, availability, price or SLA is confirmed.', 'Evidence shape does not authenticate sources; independently evaluated settlement is fallible.', 'Finalization and refunds can require separate state-dependent transactions.'],
-    commissioning_requirements: template?.required_owner_decisions || ['Define a supported task first'],
+    commissioning_requirements: own(template?.required_owner_decisions) || ['Define a supported task first'],
     why_outsource: residual
       ? ['The agent could not settle these items from the sources it could read: unresolved, conflicting or inaccessible', 'Independent adjudication of what the sources leave open']
       : ['Independent checking or missing research capacity', 'Separable work can run in parallel'],
     why_not_outsource: ['Local execution may be simpler', 'Supplier, price and turnaround remain unknown'],
     next_action: decision === 'LOCAL' ? 'Do locally.' : decision === 'UNSUITABLE' ? 'Do not publish or commission this task.' : decision === 'NEEDS_SCOPE' ? 'Resolve the missing inputs before preparing a draft.' : 'Review the draft; obtain supplier agreement and separately authorize exact funding terms.',
-    draft: hasDraft ? { template_id: kind, request, procurement, rubric: rubrics[kind], threshold: template.recommended_threshold, sharing_authorized: true } : null,
+    draft: hasDraft ? { template_id: kind, request, procurement, rubric: own(rubrics[kind]), threshold: template.recommended_threshold, sharing_authorized: true } : null,
     ...(hasDraft && local_summary ? { local_summary } : {}),
     ...(market_context && !marketErrors.length ? { market_context } : {}),
   };
