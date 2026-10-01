@@ -14,8 +14,11 @@ const SHORTENERS = new Set(['bit.ly', 't.co', 'tinyurl.com', 'goo.gl', 'ow.ly', 
 // Values that look like secrets or exfiltrated data, wherever they appear in a composed URL.
 const SECRET_VALUES = [
   /0x[0-9a-f]{40,}/i, /\b[0-9a-f]{32,}\b/i, /eyJ[\w-]{10,}\.[\w-]{10,}\./, /-----BEGIN/, /\bAKIA[0-9A-Z]{16}\b/, /\bsk-[A-Za-z0-9]{20,}/, /\bgh[pousr]_[A-Za-z0-9]{20,}/,
-  /[A-Za-z0-9+/_-]{40,}={0,2}/, /(?:\b[a-z]{3,8}[-+ ]){11,}[a-z]{3,8}\b/i,
+  /(?:\b[a-z]{3,8}[-+ ]){11,}[a-z]{3,8}\b/i,
 ];
+// A long token that mixes upper case, lower case and digits looks like base64 or a random key; a slug of lowercase words does not.
+const looksEncoded = token => token.length >= 40 && /^[A-Za-z0-9+/_=-]+$/.test(token) && /[a-z]/.test(token) && /[A-Z]/.test(token) && /[0-9]/.test(token);
+const hasEncodedSegment = decoded => decoded.split(/[/?&;=]/).some(looksEncoded);
 const SECRET_FILES = /(?:^|[/\\])(?:\.env(?!\.(?:example|sample|template)\b)|id_rsa|id_ed25519|[^/]*\.pem|[^/]*keystore[^/]*|wallet\.json|\.ssh|\.aws|\.npmrc|[^/]*-bot\.json)(?:$|[/\\.?])/i;
 const SECRET_PARAMS = /(?:^|[?&;])(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|key|auth|authorization|signature|sig|session|cookie|mnemonic|seed)=/i;
 
@@ -79,7 +82,8 @@ export function screenUrl(input, { taskTexts = [], publicNames = [], provenance 
     if (/%[0-9a-f]{2}/i.test(decoded)) block('DOUBLE_ENCODING', 'percent-encoding survives one decode');
     if (u.search) block('QUERY_NOT_VERBATIM', 'a composed URL must not carry a query string');
     if (u.hash) flag('FRAGMENT', 'fragment is never sent to the server');
-    if (SECRET_VALUES.some(re => re.test(withoutCommitSegments(decoded, host)))) block('SECRET_SHAPED', 'a path or query segment looks like a secret or a data payload');
+    const unsplit = withoutCommitSegments(decoded, host);
+    if (SECRET_VALUES.some(re => re.test(unsplit)) || hasEncodedSegment(unsplit)) block('SECRET_SHAPED', 'a path or query segment looks like a secret or a data payload');
     if (SECRET_FILES.test(decoded) || SECRET_PARAMS.test(u.search)) block('SECRET_NAME', 'a credential-like file or parameter name');
     if (taskTexts.length) {
       const shingles = taskShingles(taskTexts, publicNames);

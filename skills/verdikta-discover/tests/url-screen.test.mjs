@@ -65,6 +65,12 @@ test('a URL the owner, the request or a fetched page supplied verbatim is exempt
   assert.equal(screenUrl(given, { ...ctx, provenance: ['https://docs.vendor.example/other'] }).verdict, BLOCK);
 });
 
+test('a long path of ordinary words is not a secret, a long mixed-case token is', () => {
+  assert.equal(screenUrl('https://docs.vendor.example/guides/authentication-and-authorization-overview-for-new-developers/getting-started', ctx).verdict, ALLOW);
+  assert.equal(screenUrl('https://raw.githubusercontent.com/verdikta/verdikta-applications/main/skills/verdikta-discover/tests/connected-fixtures/brightwater/reference.md', ctx).verdict, ALLOW);
+  assert.equal(screenUrl('https://docs.vendor.example/x/' + 'aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7d', ctx).verdict, BLOCK);
+});
+
 test('a git commit segment on a code host is not a secret, anywhere else it is', () => {
   const sha = 'a1b2c3d4e5'.repeat(4);
   assert.equal(screenUrl(`https://raw.githubusercontent.com/o/r/${sha}/docs/p.md`).verdict, ALLOW);

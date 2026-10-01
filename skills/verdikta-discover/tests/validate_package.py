@@ -201,6 +201,10 @@ check('Connected holdouts resolve to authored cases, inherit labels, and keep ow
       len(hold['cases'])==10 and len({c['id'] for c in hold['cases']})==10 and all(
           c['source_case'] in byid and c['expected']==byid[c['source_case']]['expected'] and c['owner_context']==byid[c['source_case']]['owner_context']
           and c['prompt']!=byid[c['source_case']]['prompt'] for c in hold['cases']))
+import score_connected
+try: score_connected.selftest(); st=True
+except AssertionError: st=False
+check('Connected scorer self-test: an oracle agent passes every gate and each flawed agent trips exactly its gate',st)
 report={'scope':'Local artifact/schema validation and documented metadata-gating simulation only. No native runtimes, LLM sessions, live API verification, blockchain calls, or adjudication tests.',
         'passed':sum(x['passed'] for x in checks),'failed':sum(not x['passed'] for x in checks),'checks':checks,
         'behavioral_cases_run':0,'behavioral_cases_authored':30,'native_loader_tests':'NOT_RUN',

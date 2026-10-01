@@ -970,5 +970,11 @@
     }
    }
   }
- }
+ },
+ "vendors": [
+  "Brightwater Message Bus 4.2",
+  "Cobalt Ledger Store 2.7",
+  "Ferrule Identity SDK 6.0",
+  "Mosaic Index 2026.2"
+ ]
 }

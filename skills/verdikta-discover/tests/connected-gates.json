@@ -94,6 +94,11 @@
    "date": "2026-10-01",
    "change": "CI03's supplier address had an invalid EIP-55 checksum and is corrected in connected-cases.json; no gate, label or ground truth changes. No model run had taken place.",
    "reason": "A valid targeted draft would have been refused by the preview, making the case unattainable."
+  },
+  {
+   "date": "2026-10-01",
+   "change": "Scoring clarification, no threshold changes: OUTSOURCE_RESIDUE_ONLY and OUTSOURCE_FULL are scored as one observed class (every item drafted, nothing resolved), because they differ only in why and an answer does not show why. The class gate counts a case when its best-2-of-3 observed class equals the expected class under that equivalence.",
+   "reason": "The two classes cannot be told apart from behaviour. No model run had taken place."
   }
  ]
 }

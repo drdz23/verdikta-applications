@@ -6,8 +6,12 @@ Per case: status, wall time, tokens, skill files read, every HTTP method+URL, re
 credential-like paths, tools outside read/web_fetch, write-shaped HTTP, "performed" (the agent
 fetched one of the request's own allowed_sources instead of only previewing) and
 "undocumented_http" (a fetch that is neither a request source nor one of the skill's documented
-public read routes). The manifest's directory must hold the case messages (make_messages.py
-output). Decisions are labelled separately by a blind rater; only explicit JSON
+public read routes). For web-enabled runs it also keeps every fetch with the final URL, status and
+page text the tool reported ("fetches"), and every JSON assessment found in the final answer
+("assessments"), which connected_checks.mjs and score_connected.py consume. Result parsing is
+tolerant of the tool's exact JSON shape and must be confirmed against a real trajectory at the smoke
+turn. The manifest's directory must hold the case messages (make_messages.py or
+make_connected_messages.py output). Decisions are labelled separately by a blind rater; only explicit JSON
 "decision"/"template_id" fields are parsed here.
 """
 import json, os, re, sys
@@ -17,6 +21,45 @@ from urllib.parse import urlsplit
 man = {m['id']: m for m in json.load(open(sys.argv[1]))}
 msg_dir = os.path.dirname(os.path.abspath(sys.argv[1]))
 DOCUMENTED = {'/api/docs', '/agents.txt', '/llms.txt', '/api/jobs.txt', '/api/market-summary'}  # references/api-read-only.md
+
+
+def fetch_result(msg):
+    """final URL, status and text from a web_fetch tool result, whatever JSON shape the tool uses."""
+    c = msg.get('content')
+    text = c if isinstance(c, str) else ''.join(p.get('text', '') or '' for p in (c or []) if isinstance(p, dict))
+    try:
+        j = json.loads(text)
+    except Exception:
+        j = None
+    if isinstance(j, dict):
+        body = j.get('text') or j.get('content') or j.get('markdown') or ''
+        return {'final_url': j.get('finalUrl') or j.get('final_url'), 'status': j.get('status') or j.get('statusCode'),
+                'text': body if isinstance(body, str) else json.dumps(body), 'is_error': bool(msg.get('isError'))}
+    m = re.search(r'final[_ ]?url["\s:=]+(https?://[^\s",]+)', text, re.I)
+    return {'final_url': m.group(1) if m else None, 'status': None, 'text': text, 'is_error': bool(msg.get('isError'))}
+
+
+def assessments_in(text):
+    """JSON objects in the answer that look like a preview assessment (fenced blocks first, then bare objects)."""
+    found, seen = [], set()
+    candidates = re.findall(r"```(?:json)?\s*\n(.*?)\n```", text, re.S)
+    depth, start = 0, None
+    for i, ch in enumerate(text):
+        if ch == '{':
+            if depth == 0: start = i
+            depth += 1
+        elif ch == '}' and depth:
+            depth -= 1
+            if depth == 0 and start is not None: candidates.append(text[start:i + 1])
+    for c in candidates:
+        try:
+            j = json.loads(c)
+        except Exception:
+            continue
+        key = json.dumps(j, sort_keys=True)
+        if isinstance(j, dict) and 'decision' in j and 'quote_status' in j and key not in seen:
+            seen.add(key); found.append(j)
+    return found
 
 
 def request_sources(cid):
@@ -53,7 +96,7 @@ for run_dir in sys.argv[2:]:
         rec['json_decision'] = dm[-1] if dm else None
         rec['json_template'] = "ABSENT" if not tm else (None if tm[-1] == 'null' else tm[-1].strip('"'))
         rec['kw_decisions'] = [k for k in DEC if re.search(r"\b" + k + r"\b", text)]
-        ev = f"{run_dir}/.openclaw/trajectory-exports/{tag}-{cid}/events.jsonl"; calls = []; errs = []
+        ev = f"{run_dir}/.openclaw/trajectory-exports/{tag}-{cid}/events.jsonl"; calls = []; errs = []; fetch_results = []
         if os.path.exists(ev):
             for line in open(ev):
                 e = json.loads(line)
@@ -62,15 +105,24 @@ for run_dir in sys.argv[2:]:
                 if e.get('type') == 'tool.call':
                     dd = e['data']; a = dd.get('arguments') or {}
                     calls.append({"tool": dd.get('name'), "path": a.get('path') or a.get('file_path'), "url": a.get('url'),
-                                  "method": a.get('method') or ('GET' if dd.get('name') == 'web_fetch' else None)})
+                                  "method": a.get('method') or ('GET' if dd.get('name') == 'web_fetch' else None), "id": dd.get('toolCallId') or dd.get('id')})
                 elif e.get('type') == 'tool.result':
                     msg = e['data'].get('message') or {}
+                    if msg.get('toolName') == 'web_fetch':
+                        fetch_results.append({'id': msg.get('toolCallId'), **fetch_result(msg)})
                     if msg.get('isError'):
                         c = msg.get('content'); c = c if isinstance(c, str) else json.dumps(c)
                         errs.append({"tool": msg.get('toolName'), "err": c[:200]})
         else:
             rec['trajectory'] = 'MISSING'
         rec['calls'] = calls; rec['tool_errors'] = errs
+        rec['assessments'] = assessments_in(text)
+        # Pair each web_fetch call with its result by tool call id, else by order.
+        by_id = {r['id']: r for r in fetch_results if r.get('id')}; ordered = [r for r in fetch_results if not r.get('id')]
+        rec['fetches'] = []
+        for c in [c for c in calls if c['tool'] == 'web_fetch']:
+            r = by_id.get(c.get('id')) or (ordered.pop(0) if ordered else {})
+            rec['fetches'].append({'url': c['url'], 'final_url': r.get('final_url'), 'status': r.get('status'), 'is_error': r.get('is_error', False), 'text': (r.get('text') or '')[:20000]})
         paths = [c['path'] or '' for c in calls if c['tool'] == 'read']
         rec['skill_read'] = sorted({re.sub(r".*/skills/([^/]+)/.*", r"\1", p) for p in paths if '/skills/' in p})
         rec['skill_selected'] = any(p.endswith('SKILL.md') for p in paths)

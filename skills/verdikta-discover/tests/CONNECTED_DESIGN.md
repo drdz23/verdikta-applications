@@ -1,6 +1,6 @@
 # Connected-agent discovery: design and pre-registration
 
-Status: **Phase 1 signed off by the owner on 2026-10-01 with the revisions in the log below; Phase 2 (implementation) is under way.** The skill, schema, shared module, client and onboarding code have not changed yet. This branch holds the design, the pre-registered cases, ground truth and gates, and the blind holdouts. Nothing here has been run against a model.
+Status: **Phase 2 (implementation) is complete; Phase 3 (the host evaluation) has not started and needs a final go-ahead after the smoke turn.** Phase 1 was signed off by the owner on 2026-10-01 with the revisions in the log below. Nothing here has been run against a model: every result in this branch is from unit, browser and package tests.
 
 Branch `feat/connected-agent-discovery`, now based on `main`. PR [#51](https://github.com/verdikta/verdikta-applications/pull/51) (merge commit `02367f1`) and PR [#52](https://github.com/verdikta/verdikta-applications/pull/52), the market-summary endpoint (`d40793c`), are merged, so the remaining PR targets `main`.
 
@@ -299,6 +299,26 @@ Two PRs:
 - **PR B, `feat/connected-agent-discovery`:** skill, schema, shared module, screens, onboarding refactor, client import, evaluation assets and the report. Targets `main`. Draft until the evaluation gates pass.
 
 No matching Ready issue exists; the PRs say that no issue is closed and no Project state changed (#23 is adjacent). I will not post comments, open issues, touch the Project, merge, deploy, restart servers, bump or publish onboarding, or publish skills.
+
+## Implementation notes and deviations (Phase 2)
+
+What was built, against the plan above:
+
+- **WS1 hybrid:** as designed (option b). `local_summary` is optional, top-level and beside the draft; `validateLocalSummary` enforces the invariants; `preview()` sends an inconsistent summary back as `NEEDS_SCOPE`. A hybrid draft binds through the unchanged binder, and local findings never enter the commissioned description (tested).
+- **WS2 safety and screens:** open public reads under hard rules, with `scripts/url-screen.mjs` (URL, redirect and content screens, `isPublicIp`) and a CLI. **The content screen measured weak** on blind corpora (27% strict and 47% lenient detection on the held-out one, with 10% and 17% false positives; see `EVALUATION_PROTOCOL.md`), so it is documented as an advisory tripwire, not a defense. The URL screen is deterministic and unit-tested. The OpenClaw `before_tool_call` hook is described from its documentation only and was not run.
+- **WS3 market context:** `market_context` in the preview, schema-enforced `not_a_quote: true`, never fills a price. The endpoint shipped separately (#52).
+- **WS4 selection:** narrower description and a triage block. `SKILL.md` fell from 7.3 KB to 5.4 KB by moving drafting detail to `references/drafting.md`, which is read only when drafting; the approval gate stays in `SKILL.md`. Early exit saves the extra reference reads, not the `SKILL.md` read itself.
+- **WS5 import:** shared `work-order.mjs`, the binder refactored onto it with accept/reject and description parity tested against the real binder, and the Create Bounty import with a divergence guard. The submit-time guard needs a connected wallet and is covered by review, not a browser test.
+- **WS6 tooling:** `extract.py` captures fetches and assessments; `connected_checks.mjs` replays the screens and runs the real binder offline; `score_connected.py` computes every pre-registered metric and gate and has a self-test in which each deliberately flawed agent trips exactly its gate. Fetch-result parsing is tolerant but **unverified against a real trajectory until the smoke turn**.
+
+Things the work found, all before any model run:
+
+- CI03 named a supplier address with an invalid EIP-55 checksum, so a correct targeted draft would have been refused. Corrected and guarded by a test (see the log).
+- `preview()` returned the module's own template objects, so mutating a returned draft corrupted the shared templates. It now returns copies.
+- The URL screen's first base64 rule treated any long path as a secret. It now looks at single segments that mix upper case, lower case and digits.
+- The earlier B07 case in `behavior-cases.json` also uses the invalid-checksum address. Its label (`NEEDS_SCOPE`) holds either way, so it is left unchanged.
+
+Not changed: `Agents.jsx`, `BuyerPreview.jsx` and the onboarding version.
 
 ## Pre-registration log
 
