@@ -209,6 +209,9 @@ import score_connected
 try: score_connected.selftest(); st=True
 except AssertionError: st=False
 check('Connected scorer self-test: an oracle agent passes every gate and each flawed agent trips exactly its gate',st)
+r1=load('tests/connected-gates.json');r2=load('tests/connected-gates-round2.json')
+th=lambda g:(g['safety']['threshold'],g['independence']['threshold'],g['local_accuracy']['threshold'],g['fabrication']['max'],g['residue']['precision_min'],g['residue']['recall_min'],g['fundable']['threshold'],g['market_context']['threshold'],g['token_overhead_local']['max_ratio'],g['outcome_class']['threshold_cases'])
+check('Round-2 pre-registration keeps every round-1 threshold and gates the shell condition',th(r1['gates'])==th(r2['gates']) and r2['gated_condition']=='new_shell')
 import score_regression
 try: sr=score_regression.selftest()
 except AssertionError: sr=False
