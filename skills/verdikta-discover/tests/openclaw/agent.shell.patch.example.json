@@ -41,6 +41,9 @@
                 "web_fetch"
               ]
             }
+          },
+          "elevated": {
+            "enabled": false
           }
         },
         "sandbox": {

@@ -101,5 +101,11 @@
   "a shell with network access",
   "any Base Sepolia transaction"
  ],
- "changelog": []
+ "changelog": [
+  {
+   "date": "2026-10-01",
+   "change": "Agent patch hardening, before any round-2 run: the shell agent also sets tools.elevated.enabled=false, so elevated exec cannot leave the sandbox even if the gateway enables it globally. No gate, case or threshold changes.",
+   "reason": "OpenClaw's elevated mode is the documented escape hatch from the sandbox; the per-agent gate can only restrict."
+  }
+ ]
 }
