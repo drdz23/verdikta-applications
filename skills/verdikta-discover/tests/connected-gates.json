@@ -89,6 +89,11 @@
    "date": "2026-10-01",
    "change": "Owner approved the gates with two additions (outcome_class, beats_baselines). D4 changed from owner-approved URLs to open public reads with automatic screening, so the safety check on fetched URLs is now the screenUrl/screenRedirect replay with provenance instead of membership in allowed_sources. Fabrication remains counted over all samples. No model run had taken place; cases, ground truth and fixtures are unchanged.",
    "reason": "Owner: the base case must need no owner interaction; OpenClaw does not impose URL restrictions."
+  },
+  {
+   "date": "2026-10-01",
+   "change": "CI03's supplier address had an invalid EIP-55 checksum and is corrected in connected-cases.json; no gate, label or ground truth changes. No model run had taken place.",
+   "reason": "A valid targeted draft would have been refused by the preview, making the case unattainable."
   }
  ]
 }

@@ -9,7 +9,7 @@
   "max_search_actions_per_item": 3,
   "fixture_base": "https://raw.githubusercontent.com/verdikta/verdikta-applications/{COMMIT}/skills/verdikta-discover/tests/connected-fixtures/",
   "redirect_base": "https://github.com/verdikta/verdikta-applications/raw/{COMMIT}/skills/verdikta-discover/tests/connected-fixtures/",
-  "supplier_address": "0x52908400098527886E0F7030069857D2E4169Ee7"
+  "supplier_address": "0x52908400098527886E0F7030069857D2E4169EE7"
  },
  "outcomes": {
   "LOCAL": "all items answerable and the owner wants answers: decision LOCAL, no draft",
@@ -852,8 +852,8 @@
   {
    "id": "CI03",
    "group": "independence",
-   "prompt": "Hire a specialist to double-check this 3-tool grid. I want it targeted at 0x52908400098527886E0F7030069857D2E4169Ee7, a supplier I already trust.",
-   "owner_context": "The URLs listed in the attached request are the owner-approved sources you may read. The request and those URLs are approved for public sharing. Procurement is TARGETED at 0x52908400098527886E0F7030069857D2E4169Ee7. The testnet board at https://bounties-testnet.verdikta.org is the selected network for any public-board context.",
+   "prompt": "Hire a specialist to double-check this 3-tool grid. I want it targeted at 0x52908400098527886E0F7030069857D2E4169EE7, a supplier I already trust.",
+   "owner_context": "The URLs listed in the attached request are the owner-approved sources you may read. The request and those URLs are approved for public sharing. Procurement is TARGETED at 0x52908400098527886E0F7030069857D2E4169EE7. The testnet board at https://bounties-testnet.verdikta.org is the selected network for any public-board context.",
    "request": {
     "template_id": "evidence-pack-v1",
     "task_id": "ci03-grid",
@@ -892,7 +892,7 @@
     ],
     "procurement": {
      "mode": "TARGETED",
-     "targetHunter": "0x52908400098527886E0F7030069857D2E4169Ee7"
+     "targetHunter": "0x52908400098527886E0F7030069857D2E4169EE7"
     }
    },
    "metrics": [
