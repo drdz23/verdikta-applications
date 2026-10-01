@@ -134,6 +134,11 @@ req['entities']=[{'entity_id':f'E{x}','name':f'Entity {x}'} for x in range(10)]
 req['fields']=[{'field_id':f'F{x}','definition':f'Field {x}','value_type':'string'} for x in range(10)]
 check('Evidence pack rejects 100-cell request beyond 50-cell cap',not request_valid('evidence-pack-v1',req))
 preview=load('examples/preview.json');check('Draft preview example validates',valid('preview',preview))
+hybrid=load('examples/preview-hybrid.json');check('Hybrid preview example validates',valid('preview',hybrid))
+bad=copy.deepcopy(hybrid);bad['local_summary']['independent']=True
+check('Hybrid preview rejects local findings presented as independent',not valid('preview',bad))
+bad=copy.deepcopy(hybrid);bad['decision']='LOCAL';bad['draft']=None
+check('Hybrid preview rejects local_summary without a draft',not valid('preview',bad))
 bad=copy.deepcopy(preview);bad['can_commission']=True
 check('Draft preview rejects commissioning authority',not valid('preview',bad))
 bad=copy.deepcopy(preview);bad['costs']['reward_wei']='0'

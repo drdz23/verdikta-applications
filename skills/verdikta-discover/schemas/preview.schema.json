@@ -296,6 +296,160 @@
           }
         }
       ]
+    },
+    "local_summary": {
+      "description": "What the agent resolved itself, and how. Never part of the commissioned request and never independent verification. Appears only with a draft.",
+      "type": "object",
+      "required": [
+        "mode",
+        "independent",
+        "performed_by",
+        "original_task_id",
+        "original_item_count",
+        "method",
+        "resolved",
+        "residual",
+        "limitations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "RESIDUAL",
+            "NON_INDEPENDENT_PASS"
+          ],
+          "description": "RESIDUAL: resolved items were removed from the draft request. NON_INDEPENDENT_PASS: every item stays in the draft request and the local pass is informational."
+        },
+        "independent": {
+          "const": false
+        },
+        "performed_by": {
+          "const": "AGENT"
+        },
+        "original_task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "original_item_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "item_id",
+              "verdict",
+              "source_url",
+              "basis"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "item_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verdict": {
+                "enum": [
+                  "SUPPORTED",
+                  "CONTRADICTED",
+                  "FOUND"
+                ]
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              "source_url": {
+                "type": "string",
+                "pattern": "^https://"
+              },
+              "basis": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "verdict": {
+                      "const": "FOUND"
+                    }
+                  },
+                  "required": [
+                    "verdict"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "value"
+                  ],
+                  "properties": {
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "residual": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "item_id",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "item_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "enum": [
+                  "UNRESOLVED_ABSENT",
+                  "CONFLICTING",
+                  "INACCESSIBLE",
+                  "NEEDS_JUDGMENT",
+                  "INDEPENDENT_REVIEW_REQUESTED"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "grid_overlap": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Evidence packs only: cells inside the drafted grid that were already resolved locally."
+        },
+        "limitations": {
+          "type": "string"
+        }
+      }
     }
   },
   "required": [
@@ -442,6 +596,20 @@
                 "const": "TARGETED"
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "local_summary"
+        ]
+      },
+      "then": {
+        "properties": {
+          "draft": {
+            "type": "object"
           }
         }
       }

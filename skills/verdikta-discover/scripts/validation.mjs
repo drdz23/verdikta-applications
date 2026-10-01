@@ -14,6 +14,45 @@ const validators = {
   'evidence-pack-v1': { request: ajv.compile(packRequest), result: ajv.compile(packResult) },
 };
 const previewShape = ajv.compile(previewSchema);
+const localSummaryShape = ajv.compile(previewSchema.properties.local_summary);
+
+// Items a request asks for: claim ids, or "entity_id/field_id" for every cell of an evidence-pack grid.
+export function requestItemIds(kind, request) {
+  if (kind === 'source-check-v1') return (request?.claims || []).map(c => c.claim_id);
+  return (request?.entities || []).flatMap(e => (request?.fields || []).map(f => `${e.entity_id}/${f.field_id}`));
+}
+const sameSet = (a, b) => a.length === b.length && new Set([...a, ...b]).size === a.length;
+
+/**
+ * Local findings are context for the owner, never part of the commissioned request and never
+ * independent verification. `request` is the DRAFT request (the residue in RESIDUAL mode, the
+ * whole request in NON_INDEPENDENT_PASS mode).
+ */
+export function validateLocalSummary(summary, kind, request) {
+  if (!localSummaryShape(summary)) return localSummaryShape.errors.map(e => `local_summary${e.instancePath} ${e.message}`);
+  const errors = [], draftIds = requestItemIds(kind, request);
+  const resolved = summary.resolved.map(r => r.item_id), residual = summary.residual.map(r => r.item_id), overlap = summary.grid_overlap || [];
+  if (!unique(resolved) || !unique(residual)) errors.push('local_summary lists an item more than once');
+  const verdictKinds = kind === 'source-check-v1' ? ['SUPPORTED', 'CONTRADICTED'] : ['FOUND'];
+  if (summary.resolved.some(r => !verdictKinds.includes(r.verdict))) errors.push(`local_summary verdicts for ${kind} must be ${verdictKinds.join(' or ')}`);
+  if (summary.mode === 'RESIDUAL') {
+    if (summary.original_task_id === request?.task_id) errors.push('A residual request needs its own task_id, different from the original');
+    if (resolved.some(id => residual.includes(id))) errors.push('An item cannot be both resolved and residual');
+    if (resolved.length + residual.length !== summary.original_item_count) errors.push('Resolved plus residual items must equal original_item_count');
+    if (kind === 'source-check-v1' && overlap.length) errors.push('grid_overlap applies to evidence packs only');
+    if (overlap.some(id => !resolved.includes(id) || residual.includes(id))) errors.push('grid_overlap cells must be resolved locally and not residual');
+    if (!sameSet(draftIds, [...residual, ...overlap])) errors.push('The draft request must hold exactly the residual items (plus grid_overlap cells for a non-rectangular residue)');
+    if (!residual.length) errors.push('A residual request needs at least one residual item; resolve everything locally with LOCAL instead');
+    if (summary.residual.some(r => r.reason === 'INDEPENDENT_REVIEW_REQUESTED')) errors.push('INDEPENDENT_REVIEW_REQUESTED needs mode NON_INDEPENDENT_PASS');
+  } else {
+    if (summary.original_task_id !== request?.task_id) errors.push('A non-independent pass keeps the original request and task_id');
+    if (residual.length || overlap.length) errors.push('A non-independent pass drafts every item: residual and grid_overlap must be empty');
+    if (draftIds.length !== summary.original_item_count) errors.push('The draft request must hold every original item');
+    if (resolved.some(id => !draftIds.includes(id))) errors.push('A resolved item is not in the draft request');
+  }
+  return errors;
+}
+
 export function validatePreview(assessment) {
   if (!previewShape(assessment)) return previewShape.errors.map(e => `${e.instancePath || '/'} ${e.message}`);
   const errors = [];
@@ -21,6 +60,7 @@ export function validatePreview(assessment) {
     const a = assessment.procurement, b = assessment.draft.procurement;
     if (a.mode !== b.mode || a.targetHunter !== b.targetHunter) errors.push('Draft procurement differs from assessment');
     if (a.mode === 'TARGETED' && !supplierAddress(a.targetHunter)) errors.push('Invalid supplier checksum/address');
+    if (assessment.local_summary) errors.push(...validateLocalSummary(assessment.local_summary, assessment.draft.template_id, assessment.draft.request));
   }
   return errors;
 }
