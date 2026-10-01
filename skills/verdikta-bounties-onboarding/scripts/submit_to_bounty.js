@@ -79,7 +79,20 @@ export async function runSubmit(lib, { contract = (address, abi, provider) => ne
       console.log(`Prepared submission ${submissionId}. Estimated prepay ${event.args.ethMaxBudget} wei (not a locked price).`);
 
     }
-    const sub = await escrow.getSubmission(jobId, submissionId);
+    // An RPC node behind the prepare receipt reverts "bad submissionId" for a submission that
+    // exists. Retry only that read, with backoff; never prepare again.
+    let sub;
+    for (let attempt = 0; ; attempt++) {
+      try { sub = await escrow.getSubmission(jobId, submissionId); break; }
+      catch (error) {
+        const lagging = /bad submissionId/i.test(`${error.reason ?? ''} ${error.shortMessage ?? ''} ${error.message ?? ''}`);
+        if (!lagging || attempt >= 4) {
+          if (arg('resume') == null && state?.submissionId != null) throw new Error(`Submission ${submissionId} is prepared and saved in ${statePath}, but the chain read failed: ${error.shortMessage ?? error.message}. Re-run with --resume ${submissionId} --state ${statePath}; do not prepare again.`, { cause: error });
+          throw error;
+        }
+        await pause(1000 * 2 ** attempt);
+      }
+    }
     if (sub.hunter.toLowerCase() !== hunter.toLowerCase()) throw new Error('Submission belongs to another hunter');
     if (arg('resume') && statePath) {
       state = JSON.parse(await fs.readFile(statePath, 'utf8'));

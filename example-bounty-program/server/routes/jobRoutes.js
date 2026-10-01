@@ -3657,8 +3657,10 @@ router.get('/:jobId', async (req, res) => {
  *     rawStatus: 0 | 1 | 2,                                // on-chain enum
  *     creator: "0x...",
  *     winner: "0x..." | null,
- *     payoutWei: string,                                   // still-escrowed ETH
+ *     payoutWei: string,                                   // still-escrowed ETH (0 once paid/refunded)
  *     payoutEth: string,                                   // human-readable
+ *     bountyAmountWei: string,                             // funded amount; constant for life
+ *     bountyAmount: string,                                // human-readable
  *     submissionDeadline: number,                          // unix seconds
  *     deadlinePassed: boolean,
  *     submissionCount: number,
@@ -3749,8 +3751,10 @@ router.get('/:jobId/onchain-status', async (req, res) => {
       rawStatus,                                 // 0=Open, 1=Awarded, 2=Closed (enum)
       creator: b.creator,
       winner: b.winner,
-      payoutWei: b.bountyAmountWei,
-      payoutEth: b.bountyAmount,
+      payoutWei: b.escrowWei,                    // live escrow: 0 once paid out or refunded
+      payoutEth: ethers.formatEther(b.escrowWei),
+      bountyAmountWei: b.bountyAmountWei,        // funded amount, unchanged by payout
+      bountyAmount: b.bountyAmount,
       submissionDeadline: deadline,
       deadlinePassed: deadline > 0 && now > deadline,
       submissionCount: b.submissionCount,

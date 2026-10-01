@@ -537,6 +537,8 @@ class ContractService {
         // payoutWei, which the contract zeroes after payout/refund.
         bountyAmount: ethers.formatEther(fundedBountyWei(bounty)),
         bountyAmountWei: fundedBountyWei(bounty).toString(),
+        // Live escrow balance (raw payoutWei): what the contract still holds.
+        escrowWei: bounty.payoutWei.toString(),
         createdAt: Number(bounty.createdAt),
         submissionCloseTime: Number(bounty.submissionDeadline),
         status: effectiveStatus,
@@ -583,6 +585,8 @@ class ContractService {
         // payoutWei, which the contract zeroes after payout/refund.
         bountyAmount: ethers.formatEther(fundedBountyWei(bounty)),
         bountyAmountWei: fundedBountyWei(bounty).toString(),
+        // Live escrow balance (raw payoutWei): what the contract still holds.
+        escrowWei: bounty.payoutWei.toString(),
         createdAt: Number(bounty.createdAt),
         submissionCloseTime: Number(bounty.submissionDeadline),
         status: effectiveStatus,

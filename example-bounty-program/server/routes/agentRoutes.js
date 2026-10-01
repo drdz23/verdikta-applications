@@ -260,7 +260,8 @@ server performing the ABI decoding. This is a shortcut, not an authority: the ch
 is the source of truth and you do not need this site to read it — call
 getBounty(uint256) yourself through an ABI-aware library (see "Reading Bounties"
 under Direct Blockchain Access) and you get the same data. Returns { status
-(OPEN|EXPIRED|AWARDED|CLOSED), rawStatus, payoutWei, payoutEth, winner,
+(OPEN|EXPIRED|AWARDED|CLOSED), rawStatus, payoutWei/payoutEth (live escrow, 0
+once paid out or refunded), bountyAmountWei/bountyAmount (funded amount), winner,
 submissionDeadline, deadlinePassed, canBeClosed, linkage, ... }. Useful when you
 want to check whether a bounty is actually closed / paid out without the API's
 cached view; if it disagrees with GET /api/jobs/:id, the sync service has not yet
@@ -957,7 +958,7 @@ router.get('/api/docs', (req, res) => {
         method: 'GET',
         path: '/jobs/:id/onchain-status',
         description: 'Optional convenience: a live getBounty(uint256) read, ABI-decoded server-side. The contract is the source of truth — you can perform the same read yourself with any ABI-aware library (see contracts.bountyEscrow); this endpoint is a shortcut, not an authority. Use when the cached /jobs/:id view may be stale, or to diagnose ID drift via the "linkage" field. IMPORTANT: :id is the on-chain bountyId, not the API jobId — they only match for linked jobs. Use /api/jobs/lookup first if you are not sure.',
-        returns: '{ success, bountyId, requiredPrepay (wei to attach at start, read live), prepareCutoff (last unix second prepare can succeed), status, rawStatus, creator, winner, payoutWei, payoutEth, submissionDeadline, deadlinePassed, submissionCount, isAcceptingSubmissions, canBeClosed, targetHunter, evaluationCid, classId, threshold, linkage: { state, onChain, syncedFromBlockchain, detail, fix?, mismatch?, correctJobId?, idDriftWarning? }, fetchedAt, note }. linkage.state ∈ { linked | patched-not-synced | not-on-chain | mismatch | untracked }. linkage.fix is a string when present and is OMITTED (not null) when state is linked — type it as optional, not nullable. 404 responses for missing on-chain bounties include localJobExists/localJobLinked flags and a fix pointing at /api/jobs/lookup.'
+        returns: '{ success, bountyId, requiredPrepay (wei to attach at start, read live), prepareCutoff (last unix second prepare can succeed), status, rawStatus, creator, winner, payoutWei, payoutEth (live escrow; 0 once paid out or refunded), bountyAmountWei, bountyAmount (funded amount), submissionDeadline, deadlinePassed, submissionCount, isAcceptingSubmissions, canBeClosed, targetHunter, evaluationCid, classId, threshold, linkage: { state, onChain, syncedFromBlockchain, detail, fix?, mismatch?, correctJobId?, idDriftWarning? }, fetchedAt, note }. linkage.state ∈ { linked | patched-not-synced | not-on-chain | mismatch | untracked }. linkage.fix is a string when present and is OMITTED (not null) when state is linked — type it as optional, not nullable. 404 responses for missing on-chain bounties include localJobExists/localJobLinked flags and a fix pointing at /api/jobs/lookup.'
       },
       {
         method: 'GET',
