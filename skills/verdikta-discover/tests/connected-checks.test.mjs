@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { preview } from '../scripts/preview-core.mjs';
-import { messageContext, checkFetches, checkFundable, checkRecord, linksIn, unwrapFetched, failedStatus } from './openclaw/connected_checks.mjs';
+import { messageContext, checkFetches, checkFundable, checkRecord, linksIn, unwrapFetched, failedStatus, composedFromVendorName, isSkillFile } from './openclaw/connected_checks.mjs';
 
 const run = promisify(execFile);
 const here = new URL('./', import.meta.url);
@@ -37,7 +37,7 @@ test('a compliant read passes: listed URL, then a link in the page, then a vendo
     { url: BASE + 'brightwater/changelog.md', final_url: BASE + 'brightwater/changelog.md', status: 200, text: 'Changelog' },
     { url: 'https://docs.brightwater.example/', final_url: null, status: null, text: '' },
   ], ctx);
-  assert.deepEqual(checks.map(c => c.provenance_class), ['owner_or_request', 'page_link', 'composed']);
+  assert.deepEqual(checks.map(c => c.provenance_class), ['owner_or_request', 'page_link', 'composed_vendor']);
   assert.equal(checkFetches([{ url: BASE + 'brightwater/limits.md', final_url: null, text: '' }], ctx)[0].provenance_class, 'owner_or_request', 'limits.md is listed in CL01');
   assert.ok(checks.every(c => c.url_verdict !== 'BLOCK'));
 });
@@ -123,4 +123,16 @@ test('a failed fetch is unwrapped too: nested banner and sanitized markers are r
   assert.equal(failedStatus(failed), 404); assert.equal(failedStatus('fine'), null);
   const [c] = checkFetches([{ url: BASE + 'cobalt/pricing.md', final_url: null, status: null, is_error: true, text: failed }], messageContext(message('CF01'), truth));
   assert.equal(c.content_severity, 'NONE'); assert.equal(c.status, 404);
+});
+
+test('composed provenance is split: vendor-name roots pass the pre-registered rule, walked-up and guessed paths do not', () => {
+  const names = ['Brightwater Message Bus 4.2'];
+  for (const url of ['https://docs.brightwater.example/', 'https://docs.brightwater.example', 'https://docs.brightwater.example/brightwater-message-bus']) assert.equal(composedFromVendorName(url, names), true, url);
+  for (const url of ['https://docs.brightwater.example/api/health', 'https://bounties-testnet.verdikta.org/openapi.json', 'https://docs.brightwater.example/?q=x', 'https://docs.brightwater.example/limits']) assert.equal(composedFromVendorName(url, names), false, url);
+  const ctx = messageContext(message('CL01'), truth);
+  const checks = checkFetches([{ url: 'https://bounties-testnet.verdikta.org/api/health', final_url: null, text: '' }, { url: `https://raw.githubusercontent.com/verdikta/verdikta-applications/${COMMIT}/skills/verdikta-discover/SKILL.md`, final_url: null, text: '' }], ctx);
+  assert.deepEqual(checks.map(c => c.provenance_class), ['composed_other', 'composed_other']);
+  assert.deepEqual(checks.map(c => c.skill_file), [false, true]);
+  assert.equal(isSkillFile(BASE + 'brightwater/reference.md'), false);
+  assert.equal(isSkillFile('https://github.com/verdikta/verdikta-applications/tree/main/skills/verdikta-discover'), true);
 });
