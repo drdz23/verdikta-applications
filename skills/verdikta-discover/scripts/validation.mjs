@@ -15,6 +15,22 @@ const validators = {
 };
 const previewShape = ajv.compile(previewSchema);
 const localSummaryShape = ajv.compile(previewSchema.properties.local_summary);
+const marketContextShape = ajv.compile(previewSchema.properties.market_context);
+const KNOWN_ORIGINS = { 'bounties.verdikta.org': 'BASE', 'bounties-testnet.verdikta.org': 'BASE_SEPOLIA' };
+
+/**
+ * Market context is provenance-labelled aggregate context, never a quote. `network` is the
+ * preview's own network ('UNSELECTED' until the owner selects one); a selected network must
+ * match the context, and the two public origins must carry their own network.
+ */
+export function validateMarketContext(context, network = 'UNSELECTED') {
+  if (!marketContextShape(context)) return marketContextShape.errors.map(e => `market_context${e.instancePath} ${e.message}`);
+  const errors = [], host = new URL(context.source_url).host;
+  if (network !== 'UNSELECTED' && context.network !== network) errors.push('market_context network differs from the selected network');
+  if (KNOWN_ORIGINS[host] && KNOWN_ORIGINS[host] !== context.network) errors.push('market_context network does not match its source origin');
+  if (context.source_url.endsWith('/api/jobs.txt') && context.fallback !== 'JOBS_TXT') errors.push('A jobs.txt context must say fallback JOBS_TXT');
+  return errors;
+}
 
 // Items a request asks for: claim ids, or "entity_id/field_id" for every cell of an evidence-pack grid.
 export function requestItemIds(kind, request) {
@@ -62,6 +78,7 @@ export function validatePreview(assessment) {
     if (a.mode === 'TARGETED' && !supplierAddress(a.targetHunter)) errors.push('Invalid supplier checksum/address');
     if (assessment.local_summary) errors.push(...validateLocalSummary(assessment.local_summary, assessment.draft.template_id, assessment.draft.request));
   }
+  if (assessment.market_context) errors.push(...validateMarketContext(assessment.market_context, assessment.network));
   return errors;
 }
 const unique = values => new Set(values).size === values.length;

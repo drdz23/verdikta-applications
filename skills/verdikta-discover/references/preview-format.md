@@ -27,3 +27,7 @@ When the agent resolves part of a request itself and drafts outside work only fo
 - Each resolved item cites a `source_url` and a short `basis`. A `FOUND` cell needs its `value`. Residual reasons: `UNRESOLVED_ABSENT` (readable sources are silent), `CONFLICTING` (two sources disagree), `INACCESSIBLE`, `NEEDS_JUDGMENT`.
 - Never turn an unresolved, conflicting or inaccessible item into a verdict. If everything is answerable and the owner wants answers, the decision is `LOCAL` with no draft. `validatePreview` and `preview()` enforce these invariants and send an inconsistent draft back as `NEEDS_SCOPE`.
 - See `examples/preview-hybrid.json`.
+
+## Market context: `market_context`
+
+An optional top-level object with the aggregate context an owner needs to judge cost and activity, always labelled as not a quote. Fields: `source_url` (an `https` `/api/market-summary` or `/api/jobs.txt` URL, no query), `fetched_at`, `generated_at`, `network` (`BASE` or `BASE_SEPOLIA`, matching the origin and any network the owner selected), `window_days`, `service_scope`, `sample_size`, `not_a_quote` (always `true`), the `summary` figures and a `caveat`. It never fills `costs.reward_wei`, `price_status` or `availability_status`, and the draft is identical with or without it. An invalid context is left out and `inputs_needed` says why. State it in the prose as: "Market context (not a quote): ...". See `examples/preview-hybrid.json` and `api-read-only.md`.

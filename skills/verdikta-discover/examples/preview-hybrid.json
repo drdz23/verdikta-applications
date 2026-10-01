@@ -3,7 +3,7 @@
   "decision": "PREVIEW",
   "quote_status": "DRAFT_NOT_QUOTED",
   "template_id": "source-check-v1",
-  "network": "UNSELECTED",
+  "network": "BASE_SEPOLIA",
   "reason": "Part of the request was resolved locally by the agent, which is not independent verification. Only the remaining items need outside work.",
   "task_summary": "Hybrid example (synthetic): two claims resolved locally, one drafted for outside work",
   "supplier": {
@@ -212,5 +212,26 @@
         "note": "The page does not mention retention."
       }
     ]
+  },
+  "market_context": {
+    "source_url": "https://bounties-testnet.verdikta.org/api/market-summary",
+    "fetched_at": "2026-10-01T12:00:00Z",
+    "generated_at": "2026-10-01T11:58:00Z",
+    "network": "BASE_SEPOLIA",
+    "window_days": 30,
+    "service_scope": "source-check-v1",
+    "sample_size": 12,
+    "not_a_quote": true,
+    "summary": {
+      "open": 4,
+      "awarded_in_window": 8,
+      "median_bounty_amount_wei": "8000000000000000",
+      "p25_bounty_amount_wei": "6000000000000000",
+      "p75_bounty_amount_wei": "10000000000000000",
+      "median_time_to_award_seconds": 11520,
+      "median_oracle_prepay_wei": "240000000000000",
+      "active_hunters": 5
+    },
+    "caveat": "Synthetic example values. Past aggregate activity is not a quote, an offer or supplier availability."
   }
 }

@@ -450,6 +450,146 @@
           "type": "string"
         }
       }
+    },
+    "market_context": {
+      "description": "Aggregate public context about comparable bounties, with provenance. Never a quote: it does not fill costs, price_status or availability_status.",
+      "type": "object",
+      "required": [
+        "source_url",
+        "fetched_at",
+        "network",
+        "window_days",
+        "service_scope",
+        "sample_size",
+        "not_a_quote",
+        "summary",
+        "caveat"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source_url": {
+          "type": "string",
+          "pattern": "^https://[^/?#]+/api/(market-summary|jobs\\.txt)$"
+        },
+        "fetched_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "generated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "network": {
+          "enum": [
+            "BASE",
+            "BASE_SEPOLIA"
+          ]
+        },
+        "window_days": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "service_scope": {
+          "enum": [
+            "source-check-v1",
+            "evidence-pack-v1",
+            "unclassified",
+            "all"
+          ]
+        },
+        "sample_size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_a_quote": {
+          "const": true
+        },
+        "fallback": {
+          "enum": [
+            "NONE",
+            "JOBS_TXT"
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "open": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "awarded_in_window": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "closed_unawarded_in_window": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "median_bounty_amount_wei": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9]+$"
+            },
+            "p25_bounty_amount_wei": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9]+$"
+            },
+            "p75_bounty_amount_wei": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9]+$"
+            },
+            "median_time_to_award_seconds": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "median_oracle_prepay_wei": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9]+$"
+            },
+            "active_hunters": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        },
+        "caveat": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   },
   "required": [

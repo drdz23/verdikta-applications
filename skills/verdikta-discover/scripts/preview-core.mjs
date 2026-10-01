@@ -1,5 +1,5 @@
 import { supplierAddress } from './address.mjs';
-import { validateRequest, validateLocalSummary } from './validation.mjs';
+import { validateRequest, validateLocalSummary, validateMarketContext } from './validation.mjs';
 import sourceTemplate from '../templates/source-check-v1.template.json' with { type: 'json' };
 import packTemplate from '../templates/evidence-pack-v1.template.json' with { type: 'json' };
 import sourceRubric from '../templates/source-check-v1.rubric.json' with { type: 'json' };
@@ -10,7 +10,7 @@ const rubrics = { 'source-check-v1': sourceRubric, 'evidence-pack-v1': packRubri
 export function preview(input = {}) {
   const { request, task_summary = '', template_id, local_sufficient = false,
   sharing_authorized, unsuitable_reason = '', handoff_requested = false,
-  procurement_mode = 'UNSELECTED', targetHunter = null, local_summary = null } = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  procurement_mode = 'UNSELECTED', targetHunter = null, local_summary = null, market_context = null, network = 'UNSELECTED' } = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   const kind = template_id ?? (request?.claims ? 'source-check-v1' : request?.entities ? 'evidence-pack-v1' : null);
   const errors = validateRequest(kind, request);
   let decision = 'PREVIEW', reason = local_summary?.mode === 'RESIDUAL'
@@ -41,12 +41,16 @@ export function preview(input = {}) {
   if (localErrors.length) { decision = 'NEEDS_SCOPE'; reason = localErrors[0]; }
   const template = templates[kind];
   const procurement = { mode: ['OPEN', 'TARGETED'].includes(procurement_mode) ? procurement_mode : 'UNSELECTED', targetHunter: procurement_mode === 'TARGETED' ? supplierAddress(targetHunter) : null };
-  const inputsNeeded = [...errors, ...targetingErrors, ...localErrors, ...(sharing_authorized !== true ? ['Obtain sharing approval'] : [])];
+  const selectedNetwork = ['BASE', 'BASE_SEPOLIA'].includes(network) ? network : 'UNSELECTED';
+  // Market context is optional provenance-labelled context. An invalid one is left out (and said so)
+  // rather than blocking the draft; it never touches costs, price_status or availability_status.
+  const marketErrors = market_context ? validateMarketContext(market_context, selectedNetwork) : [];
+  const inputsNeeded = [...errors, ...targetingErrors, ...localErrors, ...marketErrors.map(e => `Market context omitted: ${e}`), ...(sharing_authorized !== true ? ['Obtain sharing approval'] : [])];
   const hasDraft = ['PREVIEW', 'HANDOFF_REQUESTED'].includes(decision) && !errors.length && !targetingErrors.length;
   const residual = hasDraft && local_summary?.mode === 'RESIDUAL';
   return {
     schema_version: '1.0.0', decision, quote_status: 'DRAFT_NOT_QUOTED', template_id: template ? kind : null,
-    network: 'UNSELECTED', reason, task_summary: task_summary || request?.task_id || 'Unscoped task',
+    network: selectedNetwork, reason, task_summary: task_summary || request?.task_id || 'Unscoped task',
     supplier: { status: 'UNKNOWN', candidates: [] }, price_status: 'UNKNOWN', availability_status: 'UNKNOWN',
     costs: { reward_wei: null, buyer_gas_estimate_wei: null, evaluation_prepay_estimate_wei: null, explanation: 'No supplier offer or live fee observation exists in this local preview.' },
     can_commission: false, authorization_granted: false, funds_moved: false,
@@ -62,5 +66,6 @@ export function preview(input = {}) {
     next_action: decision === 'LOCAL' ? 'Do locally.' : decision === 'UNSUITABLE' ? 'Do not publish or commission this task.' : decision === 'NEEDS_SCOPE' ? 'Resolve the missing inputs before preparing a draft.' : 'Review the draft; obtain supplier agreement and separately authorize exact funding terms.',
     draft: hasDraft ? { template_id: kind, request, procurement, rubric: rubrics[kind], threshold: template.recommended_threshold, sharing_authorized: true } : null,
     ...(hasDraft && local_summary ? { local_summary } : {}),
+    ...(market_context && !marketErrors.length ? { market_context } : {}),
   };
 }

@@ -135,6 +135,11 @@ req['fields']=[{'field_id':f'F{x}','definition':f'Field {x}','value_type':'strin
 check('Evidence pack rejects 100-cell request beyond 50-cell cap',not request_valid('evidence-pack-v1',req))
 preview=load('examples/preview.json');check('Draft preview example validates',valid('preview',preview))
 hybrid=load('examples/preview-hybrid.json');check('Hybrid preview example validates',valid('preview',hybrid))
+check('Hybrid example carries market context labelled as not a quote',hybrid['market_context']['not_a_quote'] is True and hybrid['costs']['reward_wei'] is None)
+bad=copy.deepcopy(hybrid);bad['market_context']['not_a_quote']=False
+check('Preview rejects market context that is not labelled as not a quote',not valid('preview',bad))
+bad=copy.deepcopy(hybrid);bad['market_context']['summary']['reward_wei']='1'
+check('Preview rejects a quote-shaped field inside market context',not valid('preview',bad))
 bad=copy.deepcopy(hybrid);bad['local_summary']['independent']=True
 check('Hybrid preview rejects local findings presented as independent',not valid('preview',bad))
 bad=copy.deepcopy(hybrid);bad['decision']='LOCAL';bad['draft']=None

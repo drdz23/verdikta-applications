@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 man = {m['id']: m for m in json.load(open(sys.argv[1]))}
 msg_dir = os.path.dirname(os.path.abspath(sys.argv[1]))
-DOCUMENTED = {'/api/docs', '/agents.txt', '/llms.txt', '/api/jobs.txt'}  # references/api-read-only.md
+DOCUMENTED = {'/api/docs', '/agents.txt', '/llms.txt', '/api/jobs.txt', '/api/market-summary'}  # references/api-read-only.md
 
 
 def request_sources(cid):
