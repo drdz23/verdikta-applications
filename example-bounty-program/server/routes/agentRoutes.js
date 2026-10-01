@@ -7,6 +7,7 @@
  * - GET /agents.txt        - Plain text agent access guide (the deep operating manual)
  * - GET /api/docs          - JSON API documentation
  * - GET /api/jobs.txt      - Plain text bounty listing
+ * - GET /api/market-summary - Aggregate market context (counts, medians); not a quote
  * - GET /sitemap.xml       - XML sitemap (static pages + bounties)
  * - GET /feed.xml          - Atom feed of bounties
  *
@@ -18,6 +19,7 @@ const router = express.Router();
 const jobStorage = require('../utils/jobStorage');
 const { config } = require('../config');
 const logger = require('../utils/logger');
+const marketSummary = require('../utils/marketSummary');
 const fs = require('fs');
 const path = require('path');
 
@@ -537,6 +539,17 @@ retry once any in-flight round resolves).
 
 ## Plain Text Bounty List (zero parsing)
 GET /api/jobs.txt
+
+## Market Summary (aggregate context, NOT a quote)
+GET /api/market-summary
+Public, no authentication, no parameters, cached for 5 minutes. Returns aggregates
+only (no addresses, titles or task content): open / awarded / closed counts, the median
+and interquartile range of bountyAmountWei, typical time to award, worst-case oracle
+prepay (ethMaxBudget, mostly refunded) and the number of active hunters over a stated
+window, split by service template (source-check-v1, evidence-pack-v1) with everything
+else under "unclassified". Includes network, window and generated_at. A quartile block
+built from fewer than 3 samples is withheld. It is context for pricing a new bounty, never
+a quote, an offer or proof that a supplier exists. /api/jobs.txt is the plain-text fallback.
 
 ## Full Documentation
 GET /api/docs
@@ -1246,6 +1259,11 @@ router.get('/api/docs', (req, res) => {
       },
       {
         method: 'GET',
+        path: '/market-summary',
+        description: 'Public aggregate market context, cached 5 minutes: open/awarded/closed counts, median and interquartile range of bountyAmountWei, typical time to award, worst-case oracle prepay and active-hunter count over a stated window, split by service template (source-check-v1, evidence-pack-v1, unclassified). Aggregates only, no addresses or task content; quartiles are withheld below 3 samples. Always carries not_a_quote: true: it is not a quote, an offer or supplier availability.'
+      },
+      {
+        method: 'GET',
         path: '/classes',
         description: 'List Verdikta AI evaluation classes',
         params: ['status', 'provider']
@@ -1459,7 +1477,8 @@ router.get('/api/docs', (req, res) => {
     },
     feeds: {
       atom: '/feed.xml',
-      text: '/api/jobs.txt'
+      text: '/api/jobs.txt',
+      marketSummary: '/api/market-summary'
     },
     support: {
       description: 'Where to report problems that persist after the self-service tools (diagnose / nextAction / onchain-status) and the documented retry-later cases are exhausted',
@@ -1537,12 +1556,37 @@ router.get('/api/jobs.txt', async (req, res) => {
     }
 
     lines.push('');
+    lines.push(`Market context (aggregates, not a quote): ${base}/api/market-summary`);
     lines.push(`Full API docs: ${base}/api/docs`);
 
     res.type('text/plain').send(lines.join('\n'));
   } catch (error) {
     logger.error('[agent/jobs.txt] error', { msg: error.message });
     res.status(500).type('text/plain').send('Error fetching bounties. Try GET /api/jobs for JSON format.');
+  }
+});
+
+/* ==========================
+   GET /api/market-summary
+   Aggregate, public, cached context for buyers. See utils/marketSummary.js.
+   ========================== */
+
+router.get('/api/market-summary', async (req, res) => {
+  try {
+    const ttlSeconds = marketSummary.DEFAULT_TTL_SECONDS;
+    const summary = await marketSummary.getMarketSummary(async () => {
+      const jobs = await jobStorage.listJobs({ includeOrphans: false });
+      return marketSummary.buildMarketSummary(jobs, {
+        windowDays: marketSummary.windowDaysFromEnv(),
+        ttlSeconds,
+        network: { name: config.networkName || config.network || null, chain_id: config.chainId ?? null }
+      });
+    }, { ttlSeconds });
+    res.set('Cache-Control', `public, max-age=${ttlSeconds}`);
+    res.json(summary);
+  } catch (error) {
+    logger.error('[agent/market-summary] error', { msg: error.message });
+    res.status(500).json({ error: 'Could not compute the market summary. Try GET /api/jobs.txt for the plain-text listing.' });
   }
 });
 
@@ -1709,6 +1753,7 @@ Agents that transact (create bounties, submit work, finalize) should start with 
 ## Data feeds
 
 - [Open bounties (plain text)](${base}/api/jobs.txt): Human- and agent-readable listing of open bounties.
+- [Market summary (JSON)](${base}/api/market-summary): Aggregate counts, median prices and typical time to award by service template. Context only, not a quote.
 - [Bounty feed (Atom)](${base}/feed.xml): Atom feed of the most recent bounties.
 
 ## Optional
@@ -1753,6 +1798,7 @@ router.get('/robots.txt', (req, res) => {
 # Public bounty board: crawling and AI access are welcome.
 # Agent guide:  ${base}/agents.txt
 # llms.txt:     ${base}/llms.txt
+# Market context (aggregates, not a quote): ${base}/api/market-summary
 
 ${agentBlocks}
 
