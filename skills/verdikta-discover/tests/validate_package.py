@@ -140,6 +140,57 @@ bad=copy.deepcopy(preview);bad['costs']['reward_wei']='0'
 check('Draft preview rejects invented zero quote',not valid('preview',bad))
 check('Behavior fixture suite contains 30 unique case IDs',len(load('tests/behavior-cases.json')['cases'])==30 and len({c['id'] for c in load('tests/behavior-cases.json')['cases']})==30)
 check('Behavior suite explicitly marked NOT_RUN',load('tests/behavior-cases.json')['status']=='NOT_RUN')
+
+# ---- Connected-agent evaluation assets: every authored claim and cell must have its known answer in the fixtures.
+FIX=ROOT/'tests'/'connected-fixtures'
+def fixture(path): return (FIX/path).read_text() if (FIX/path).is_file() else None
+def has(path,text): body=fixture(path); return body is not None and text in body
+def lacks(paths,terms): return all(t.lower() not in (fixture(p) or '').lower() for p in paths for t in terms)
+truth=load('tests/connected-ground-truth.json'); ccases=load('tests/connected-cases.json')
+ok=True
+for fid,f in truth['claims'].items():
+    t=f['truth']
+    if t in ('SUPPORTED','CONTRADICTED','CONFLICT'): ok&=bool(f['sources']) and all(has(x['path'],x['quote']) for x in f['sources'])
+    if t=='CONFLICT': ok&=len({x['path'] for x in f['sources']})>=2
+    if t=='UNRESOLVED': ok&=lacks(f['check_paths'],f['absent_terms']) and all(fixture(m) is None for m in f.get('missing_paths',[]))
+    if f.get('reason')=='INACCESSIBLE': ok&=bool(f['missing_paths'])
+check('Connected ground truth: every claim quote is in its fixture and every absent term is absent',ok)
+ok=True
+for slug,tool in truth['pack'].items():
+    for field,cell in tool['cells'].items():
+        if cell['truth']=='FOUND': ok&=any(has(p,cell['quote']) for p in tool['pages'])
+        elif cell['truth']=='CONFLICT': ok&=len({a['value'] for a in cell['alternatives']})>1 and all(has(a['path'],a['quote']) for a in cell['alternatives'])
+        elif cell['reason']=='ABSENT': ok&=lacks(tool['pages'],cell['absent_terms'])
+        else: ok&=bool(tool['missing_paths']) and all(fixture(m) is None for m in tool['missing_paths'])
+check('Connected ground truth: every pack cell matches its fixture page',ok)
+ids=[c['id'] for c in ccases['cases']]
+check('Connected suite contains 20 unique pre-registered case IDs',len(ids)==20 and len(set(ids))==20 and ccases['status']=='PRE_REGISTERED')
+sys.path.insert(0,str(ROOT/'tests'/'openclaw'))
+from make_connected_messages import expand_request, PLACEHOLDER_COMMIT
+ok=True
+for c in ccases['cases']:
+    req=expand_request(c,ccases,truth,PLACEHOLDER_COMMIT)
+    if c['request'] is None: ok&=c['expected']['decision']=='UNSUITABLE'; continue
+    ok&=request_valid(c['request']['template_id'],req) and not req['fixture_only']
+    ok&=all(u.startswith('https://') for u in req['source_policy']['allowed_sources'])
+check('Connected cases expand to valid, non-fixture requests',ok)
+def case_items(c):
+    r=c['request']
+    return {i['item_id'] for i in r['items']} if r['template_id']=='source-check-v1' else {f'{e}/{f}' for e in r['entities'] for f in r['fields']}
+ok=True
+for c in ccases['cases']:
+    if c['request'] is None: continue
+    e=c['expected']; items=case_items(c)
+    listed=set(e.get('local_items',{}))|set(e.get('residual_items',[]))|set(e.get('draft_items',[]))
+    ok&=listed<=items
+    if e['outcome'] in ('LOCAL','HYBRID','NEEDS_SCOPE_RESIDUAL'): ok&=set(e['local_items'])|set(e.get('residual_items',[]))==items
+    if e['outcome']=='OUTSOURCE_FULL': ok&=set(e['draft_items'])==items
+check('Connected expectations account for every item exactly once',ok)
+hold=load('tests/connected-holdout.json'); byid={c['id']:c for c in ccases['cases']}
+check('Connected holdouts resolve to authored cases, inherit labels, and keep owner context verbatim',
+      len(hold['cases'])==10 and len({c['id'] for c in hold['cases']})==10 and all(
+          c['source_case'] in byid and c['expected']==byid[c['source_case']]['expected'] and c['owner_context']==byid[c['source_case']]['owner_context']
+          and c['prompt']!=byid[c['source_case']]['prompt'] for c in hold['cases']))
 report={'scope':'Local artifact/schema validation and documented metadata-gating simulation only. No native runtimes, LLM sessions, live API verification, blockchain calls, or adjudication tests.',
         'passed':sum(x['passed'] for x in checks),'failed':sum(not x['passed'] for x in checks),'checks':checks,
         'behavioral_cases_run':0,'behavioral_cases_authored':30,'native_loader_tests':'NOT_RUN',

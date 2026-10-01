@@ -1,0 +1,974 @@
+{
+ "schema": "connected-ground-truth/1",
+ "note": "Authored fixtures: every claim and cell has a known answer. truth classes: SUPPORTED/CONTRADICTED/FOUND (answerable), CONFLICT (two approved pages disagree), UNRESOLVED (reason ABSENT: readable pages are silent; INACCESSIBLE: a designated page does not exist). Not model input.",
+ "as_of": "2026-09-30",
+ "claims": {
+  "BW1": {
+   "text": "Brightwater Message Bus 4.2 delivers messages at least once, not exactly once.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "brightwater/reference.md",
+     "quote": "delivers messages **at least once**"
+    }
+   ]
+  },
+  "BW2": {
+   "text": "Brightwater Message Bus 4.2 retains unacknowledged messages for 14 days by default.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "brightwater/limits.md",
+     "quote": "14 days by default; configurable from 1 hour to 14 days"
+    }
+   ]
+  },
+  "BW3": {
+   "text": "Brightwater Message Bus 4.2 supports API-key authentication.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "brightwater/reference.md",
+     "quote": "API keys are not supported"
+    }
+   ]
+  },
+  "BW4": {
+   "text": "Brightwater Message Bus 4.2 limits a message body to 256 KB.",
+   "truth": "CONFLICT",
+   "sources": [
+    {
+     "path": "brightwater/reference.md",
+     "quote": "The maximum message body size is **256 KB**"
+    },
+    {
+     "path": "brightwater/limits.md",
+     "quote": "Maximum message body size | 128 KB"
+    }
+   ]
+  },
+  "BW5": {
+   "text": "Brightwater Message Bus 4.2 moves a message to the dead-letter queue after 5 failed delivery attempts by default.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "brightwater/reference.md",
+     "quote": "By default a message moves to the dead-letter queue after **5** failed delivery attempts"
+    }
+   ]
+  },
+  "BW6": {
+   "text": "Brightwater Message Bus 4.2 guarantees message ordering across all queues in a namespace.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "brightwater/reference.md",
+     "quote": "There is no ordering guarantee between groups, or between queues in the same namespace"
+    }
+   ]
+  },
+  "BW7": {
+   "text": "Brightwater Message Bus 4.2 supports server-side message filtering with SQL-like expressions.",
+   "truth": "UNRESOLVED",
+   "reason": "ABSENT",
+   "check_paths": [
+    "brightwater/reference.md",
+    "brightwater/limits.md",
+    "brightwater/changelog.md"
+   ],
+   "absent_terms": [
+    "filter",
+    "sql"
+   ]
+  },
+  "BW9": {
+   "text": "Brightwater Message Bus 4.2 allows up to 500 queues per namespace.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "brightwater/limits.md",
+     "quote": "Queues per namespace | 500"
+    }
+   ]
+  },
+  "BW10": {
+   "text": "Brightwater Message Bus 4.2 rate-limits publishers to 3,000 requests per second per queue.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "brightwater/limits.md",
+     "quote": "3,000 requests per second per queue"
+    }
+   ]
+  },
+  "BW11": {
+   "text": "Brightwater Message Bus 4.2 lets a consumer extend the visibility timeout up to 24 hours.",
+   "truth": "CONFLICT",
+   "sources": [
+    {
+     "path": "brightwater/reference.md",
+     "quote": "up to **24 hours**"
+    },
+    {
+     "path": "brightwater/limits.md",
+     "quote": "Maximum visibility timeout | 12 hours"
+    }
+   ]
+  },
+  "CB1": {
+   "text": "Cobalt Ledger Store 2.7 caps a single PUT upload at 5 GB.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "cobalt/reference.md",
+     "quote": "up to **5 GB**"
+    }
+   ]
+  },
+  "CB2": {
+   "text": "Cobalt Ledger Store 2.7 offers read-after-write consistency for overwritten objects.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "cobalt/reference.md",
+     "quote": "Overwrites and deletes are eventually consistent"
+    }
+   ]
+  },
+  "CB3": {
+   "text": "Cobalt Ledger Store 2.7 requires every multipart part except the last to be at least 5 MB.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "cobalt/reference.md",
+     "quote": "at least **5 MB**"
+    }
+   ]
+  },
+  "CB4": {
+   "text": "Cobalt Ledger Store 2.7 keeps deleted objects recoverable for 30 days when versioning is enabled.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "cobalt/reference.md",
+     "quote": "recoverable versions for **30 days**"
+    }
+   ]
+  },
+  "CB5": {
+   "text": "Cobalt Ledger Store 2.7 responds with HTTP 429 when a client is throttled.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "cobalt/reference.md",
+     "quote": "responds with **HTTP 503**"
+    }
+   ]
+  },
+  "CB6": {
+   "text": "Cobalt Ledger Store 2.7 limits an account to 100 buckets by default.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "cobalt/limits.md",
+     "quote": "Buckets per account | 100"
+    }
+   ]
+  },
+  "CB7": {
+   "text": "Cobalt Ledger Store 2.7 supports object lock.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "cobalt/faq.md",
+     "quote": "Yes. Object lock is available from release 2.5"
+    }
+   ]
+  },
+  "CB8": {
+   "text": "Cobalt Ledger Store 2.7 includes a free tier.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "cobalt/faq.md",
+     "quote": "No. Cobalt Ledger Store is billed from the first byte stored"
+    }
+   ]
+  },
+  "CB9": {
+   "text": "Cobalt Ledger Store 2.7 supports HTTP/2 on its data plane.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "cobalt/faq.md",
+     "quote": "The data plane has supported HTTP/2 since release 2.6"
+    }
+   ]
+  },
+  "CB10": {
+   "text": "Cobalt Ledger Store 2.7 charges $0.021 per GB-month for standard storage.",
+   "truth": "UNRESOLVED",
+   "reason": "INACCESSIBLE",
+   "missing_paths": [
+    "cobalt/pricing.md"
+   ],
+   "check_paths": [
+    "cobalt/reference.md",
+    "cobalt/limits.md",
+    "cobalt/faq.md"
+   ],
+   "absent_terms": [
+    "per gb",
+    "$0.021"
+   ]
+  },
+  "CB11": {
+   "text": "Cobalt Ledger Store 2.7 supports cross-region replication.",
+   "truth": "UNRESOLVED",
+   "reason": "ABSENT",
+   "check_paths": [
+    "cobalt/reference.md",
+    "cobalt/limits.md",
+    "cobalt/faq.md"
+   ],
+   "absent_terms": [
+    "region",
+    "replic"
+   ]
+  },
+  "CB12": {
+   "text": "Cobalt Ledger Store 2.7 supports object tagging.",
+   "truth": "UNRESOLVED",
+   "reason": "ABSENT",
+   "check_paths": [
+    "cobalt/reference.md",
+    "cobalt/limits.md",
+    "cobalt/faq.md"
+   ],
+   "absent_terms": [
+    "tagging",
+    " tags",
+    "object tag"
+   ]
+  },
+  "CB13": {
+   "text": "Cobalt Ledger Store 2.7 charges no egress fee for traffic within the same region.",
+   "truth": "UNRESOLVED",
+   "reason": "INACCESSIBLE",
+   "missing_paths": [
+    "cobalt/pricing.md"
+   ],
+   "check_paths": [
+    "cobalt/reference.md",
+    "cobalt/limits.md",
+    "cobalt/faq.md"
+   ],
+   "absent_terms": [
+    "egress"
+   ]
+  },
+  "CB14": {
+   "text": "Cobalt Ledger Store 2.7 offers a committed-use discount starting at 1 TB.",
+   "truth": "UNRESOLVED",
+   "reason": "INACCESSIBLE",
+   "missing_paths": [
+    "cobalt/pricing.md"
+   ],
+   "check_paths": [
+    "cobalt/reference.md",
+    "cobalt/limits.md",
+    "cobalt/faq.md"
+   ],
+   "absent_terms": [
+    "discount",
+    "committed"
+   ]
+  },
+  "CB15": {
+   "text": "Cobalt Ledger Store 2.7 bills API requests in blocks of 1,000.",
+   "truth": "UNRESOLVED",
+   "reason": "INACCESSIBLE",
+   "missing_paths": [
+    "cobalt/pricing.md"
+   ],
+   "check_paths": [
+    "cobalt/reference.md",
+    "cobalt/limits.md",
+    "cobalt/faq.md"
+   ],
+   "absent_terms": [
+    "billed per",
+    "blocks of"
+   ]
+  },
+  "CB16": {
+   "text": "Cobalt Ledger Store 2.7 supports both governance and compliance retention modes.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "cobalt/faq.md",
+     "quote": "two retention modes: governance"
+    }
+   ]
+  },
+  "FR1": {
+   "text": "Ferrule Identity SDK 6.0 issues access tokens that expire after 15 minutes by default.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "ferrule/reference.md",
+     "quote": "expire after **15 minutes** by default"
+    }
+   ]
+  },
+  "FR2": {
+   "text": "Ferrule Identity SDK 6.0 does not rotate refresh tokens.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "ferrule/reference.md",
+     "quote": "Refresh tokens **rotate on every use**"
+    }
+   ]
+  },
+  "FR3": {
+   "text": "Ferrule Identity SDK 6.0 requires PKCE for public clients.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "ferrule/reference.md",
+     "quote": "**PKCE is required for all public clients**"
+    }
+   ]
+  },
+  "FR4": {
+   "text": "Ferrule Identity SDK 6.0 still supports the implicit grant.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "ferrule/reference.md",
+     "quote": "The implicit grant was removed in release 6.0"
+    }
+   ]
+  },
+  "FR5": {
+   "text": "Ferrule Identity SDK 6.0 supports SMS-based multi-factor authentication.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "ferrule/security.md",
+     "quote": "SMS codes are **not supported**"
+    }
+   ]
+  },
+  "FR6": {
+   "text": "Ferrule Identity SDK 6.0 hashes passwords with Argon2id.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "ferrule/security.md",
+     "quote": "Passwords are hashed with **Argon2id**"
+    }
+   ]
+  },
+  "FR7": {
+   "text": "Ferrule Identity SDK 6.0 requires Node.js 18 or later.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "ferrule/reference.md",
+     "quote": "**Node.js 18 or later**"
+    }
+   ]
+  },
+  "FR8": {
+   "text": "Ferrule Identity SDK 6.0 supports SAML single sign-on.",
+   "truth": "UNRESOLVED",
+   "reason": "ABSENT",
+   "check_paths": [
+    "ferrule/reference.md",
+    "ferrule/security.md"
+   ],
+   "absent_terms": [
+    "saml",
+    "single sign-on",
+    "sso",
+    "federat"
+   ]
+  },
+  "MO1": {
+   "text": "Mosaic Index 2026.2 returns at most 1,000 results per query.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "mosaic/reference.md",
+     "quote": "at most **1,000 results**"
+    }
+   ]
+  },
+  "MO2": {
+   "text": "Mosaic Index 2026.2 supports fuzzy matching up to an edit distance of 2.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "mosaic/reference.md",
+     "quote": "edit distance of up to **2**"
+    }
+   ]
+  },
+  "MO3": {
+   "text": "Mosaic Index 2026.2 expires pagination cursors after 10 minutes.",
+   "truth": "CONFLICT",
+   "sources": [
+    {
+     "path": "mosaic/reference.md",
+     "quote": "A cursor expires **10 minutes** after it is issued"
+    },
+    {
+     "path": "mosaic/release-notes.md",
+     "quote": "Pagination cursors now expire after **15 minutes**"
+    }
+   ]
+  },
+  "MO4": {
+   "text": "Mosaic Index 2026.2 limits query strings to 2,048 characters.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "mosaic/reference.md",
+     "quote": "up to **2,048 characters**"
+    }
+   ]
+  },
+  "MO5": {
+   "text": "Mosaic Index 2026.2 makes new documents searchable within 5 seconds at the 95th percentile.",
+   "truth": "SUPPORTED",
+   "sources": [
+    {
+     "path": "mosaic/reference.md",
+     "quote": "within **5 seconds** at the 95th percentile"
+    }
+   ]
+  },
+  "MO6": {
+   "text": "Mosaic Index 2026.2 supports vector (embedding) search.",
+   "truth": "UNRESOLVED",
+   "reason": "ABSENT",
+   "check_paths": [
+    "mosaic/reference.md",
+    "mosaic/release-notes.md"
+   ],
+   "absent_terms": [
+    "vector",
+    "embedding",
+    "semantic"
+   ]
+  },
+  "MO7": {
+   "text": "Mosaic Index 2026.2 has a free tier of 10,000 queries per month.",
+   "truth": "UNRESOLVED",
+   "reason": "ABSENT",
+   "check_paths": [
+    "mosaic/reference.md",
+    "mosaic/release-notes.md"
+   ],
+   "absent_terms": [
+    "free tier",
+    "10,000 queries",
+    "per month"
+   ]
+  },
+  "MO8": {
+   "text": "Mosaic Index 2026.2 limits query strings to 4,096 characters.",
+   "truth": "CONTRADICTED",
+   "sources": [
+    {
+     "path": "mosaic/reference.md",
+     "quote": "up to **2,048 characters**"
+    }
+   ]
+  },
+  "MO9": {
+   "text": "Mosaic Index 2026.2 includes 50,000 queries per month in the Team plan.",
+   "truth": "UNRESOLVED",
+   "reason": "INACCESSIBLE",
+   "missing_paths": [
+    "mosaic/pricing.md"
+   ],
+   "check_paths": [
+    "mosaic/reference.md",
+    "mosaic/release-notes.md"
+   ],
+   "absent_terms": [
+    "team plan",
+    "per month",
+    "50,000"
+   ]
+  },
+  "MO10": {
+   "text": "Mosaic Index 2026.2 bills overage at $0.40 per 1,000 queries.",
+   "truth": "UNRESOLVED",
+   "reason": "INACCESSIBLE",
+   "missing_paths": [
+    "mosaic/pricing.md"
+   ],
+   "check_paths": [
+    "mosaic/reference.md",
+    "mosaic/release-notes.md"
+   ],
+   "absent_terms": [
+    "overage",
+    "$0.40"
+   ]
+  },
+  "MO11": {
+   "text": "Mosaic Index 2026.2 offers a 99.9% uptime service credit.",
+   "truth": "UNRESOLVED",
+   "reason": "INACCESSIBLE",
+   "missing_paths": [
+    "mosaic/pricing.md"
+   ],
+   "check_paths": [
+    "mosaic/reference.md",
+    "mosaic/release-notes.md"
+   ],
+   "absent_terms": [
+    "uptime",
+    "service credit"
+   ]
+  }
+ },
+ "field_defs": {
+  "latest_stable_version": {
+   "definition": "Version string of the most recent stable (non-prerelease) release",
+   "value_type": "string"
+  },
+  "latest_stable_release_date": {
+   "definition": "ISO 8601 date of the most recent stable release",
+   "value_type": "string"
+  },
+  "license_spdx": {
+   "definition": "SPDX identifier of the project license",
+   "value_type": "string"
+  },
+  "minimum_runtime": {
+   "definition": "Minimum supported runtime and version, as documented",
+   "value_type": "string"
+  },
+  "supports_arm64": {
+   "definition": "Whether a native arm64 build is published for the latest stable release",
+   "value_type": "boolean"
+  }
+ },
+ "pack": {
+  "alder-cli": {
+   "name": "Alder CLI",
+   "pages": [
+    "tools/alder-cli.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "FOUND",
+     "value": "2.14.0",
+     "quote": "Latest stable release: 2.14.0 (released 2026-08-21)",
+     "match": null
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-08-21",
+     "quote": "released 2026-08-21",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "FOUND",
+     "value": "Apache-2.0",
+     "quote": "License: Apache-2.0",
+     "match": null
+    },
+    "minimum_runtime": {
+     "truth": "FOUND",
+     "value": "Node.js 20",
+     "quote": "Minimum runtime: Node.js 20",
+     "match": "(?i)node(\\.js)?\\s*20"
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": true,
+     "quote": "Native arm64 builds: yes",
+     "match": null
+    }
+   }
+  },
+  "basalt-build": {
+   "name": "Basalt Build",
+   "pages": [
+    "tools/basalt-build.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "FOUND",
+     "value": "5.3.2",
+     "quote": "Latest stable release: 5.3.2 (released 2026-09-10)",
+     "match": null
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-09-10",
+     "quote": "released 2026-09-10",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "FOUND",
+     "value": "MIT",
+     "quote": "License: MIT",
+     "match": null
+    },
+    "minimum_runtime": {
+     "truth": "FOUND",
+     "value": "Java 17",
+     "quote": "Minimum runtime: Java 17",
+     "match": "(?i)java\\s*17"
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": true,
+     "quote": "Native arm64 builds: yes",
+     "match": null
+    }
+   }
+  },
+  "cinder-lint": {
+   "name": "Cinder Lint",
+   "pages": [
+    "tools/cinder-lint.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "FOUND",
+     "value": "0.9.7",
+     "quote": "Latest stable release: 0.9.7 (released 2026-07-30)",
+     "match": null
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-07-30",
+     "quote": "released 2026-07-30",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "FOUND",
+     "value": "BSD-3-Clause",
+     "quote": "License: BSD-3-Clause",
+     "match": null
+    },
+    "minimum_runtime": {
+     "truth": "FOUND",
+     "value": "Python 3.10",
+     "quote": "Minimum runtime: Python 3.10",
+     "match": "(?i)python\\s*3\\.10"
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": false,
+     "quote": "Native arm64 builds: no",
+     "match": null
+    }
+   }
+  },
+  "dune-test": {
+   "name": "Dune Test",
+   "pages": [
+    "tools/dune-test.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "FOUND",
+     "value": "4.1.0",
+     "quote": "Latest stable release: 4.1.0 (released 2026-09-02)",
+     "match": null
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-09-02",
+     "quote": "released 2026-09-02",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "UNRESOLVED",
+     "reason": "ABSENT",
+     "absent_terms": [
+      "mit",
+      "apache",
+      "bsd",
+      "gpl",
+      "isc",
+      "mpl"
+     ]
+    },
+    "minimum_runtime": {
+     "truth": "UNRESOLVED",
+     "reason": "ABSENT",
+     "absent_terms": [
+      "node",
+      "java",
+      "python",
+      ".net",
+      "rust",
+      "go 1"
+     ]
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": true,
+     "quote": "Native arm64 builds: yes",
+     "match": null
+    }
+   }
+  },
+  "elm-profile": {
+   "name": "Elm Profile",
+   "pages": [
+    "tools/elm-profile.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "FOUND",
+     "value": "1.22.3",
+     "quote": "Latest stable release: 1.22.3 (released 2026-06-18)",
+     "match": null
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-06-18",
+     "quote": "released 2026-06-18",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "FOUND",
+     "value": "MPL-2.0",
+     "quote": "License: MPL-2.0",
+     "match": null
+    },
+    "minimum_runtime": {
+     "truth": "FOUND",
+     "value": ".NET 8",
+     "quote": "Minimum runtime: .NET 8",
+     "match": "(?i)\\.net\\s*8"
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": true,
+     "quote": "Native arm64 builds: yes",
+     "match": null
+    }
+   }
+  },
+  "fjord-deploy": {
+   "name": "Fjord Deploy",
+   "pages": [
+    "tools/fjord-deploy.md",
+    "tools/fjord-deploy-releases.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "CONFLICT",
+     "alternatives": [
+      {
+       "value": "3.5.0",
+       "path": "tools/fjord-deploy.md",
+       "quote": "Latest stable release: 3.5.0 (released 2026-09-03)"
+      },
+      {
+       "value": "3.5.1",
+       "path": "tools/fjord-deploy-releases.md",
+       "quote": "The latest stable release is **3.5.1**"
+      }
+     ]
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-09-03",
+     "quote": "released 2026-09-03",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "FOUND",
+     "value": "GPL-3.0-only",
+     "quote": "License: GPL-3.0-only",
+     "match": null
+    },
+    "minimum_runtime": {
+     "truth": "FOUND",
+     "value": "Go 1.22",
+     "quote": "Minimum runtime: Go 1.22",
+     "match": "(?i)go\\s*1\\.22"
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": true,
+     "quote": "Native arm64 builds: yes",
+     "match": null
+    }
+   }
+  },
+  "gorse-format": {
+   "name": "Gorse Format",
+   "pages": [
+    "tools/gorse-format.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "FOUND",
+     "value": "7.0.1",
+     "quote": "Latest stable release: 7.0.1 (released 2026-09-25)",
+     "match": null
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-09-25",
+     "quote": "released 2026-09-25",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "FOUND",
+     "value": "ISC",
+     "quote": "License: ISC",
+     "match": null
+    },
+    "minimum_runtime": {
+     "truth": "FOUND",
+     "value": "Rust 1.78",
+     "quote": "Minimum runtime: Rust 1.78",
+     "match": "(?i)rust\\s*1\\.78"
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": true,
+     "quote": "Native arm64 builds: yes",
+     "match": null
+    }
+   }
+  },
+  "heron-docs": {
+   "name": "Heron Docs",
+   "pages": [
+    "tools/heron-docs.md"
+   ],
+   "missing_paths": [
+    "tools/heron-docs.md"
+   ],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "UNRESOLVED",
+     "reason": "INACCESSIBLE",
+     "absent_terms": []
+    },
+    "latest_stable_release_date": {
+     "truth": "UNRESOLVED",
+     "reason": "INACCESSIBLE",
+     "absent_terms": []
+    },
+    "license_spdx": {
+     "truth": "UNRESOLVED",
+     "reason": "INACCESSIBLE",
+     "absent_terms": []
+    },
+    "minimum_runtime": {
+     "truth": "UNRESOLVED",
+     "reason": "INACCESSIBLE",
+     "absent_terms": []
+    },
+    "supports_arm64": {
+     "truth": "UNRESOLVED",
+     "reason": "INACCESSIBLE",
+     "absent_terms": []
+    }
+   }
+  },
+  "isle-bundle": {
+   "name": "Isle Bundle",
+   "pages": [
+    "tools/isle-bundle.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "FOUND",
+     "value": "12.4.0",
+     "quote": "Latest stable release: 12.4.0 (released 2026-05-29)",
+     "match": null
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-05-29",
+     "quote": "released 2026-05-29",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "FOUND",
+     "value": "MIT",
+     "quote": "License: MIT",
+     "match": null
+    },
+    "minimum_runtime": {
+     "truth": "FOUND",
+     "value": "Node.js 18",
+     "quote": "Minimum runtime: Node.js 18",
+     "match": "(?i)node(\\.js)?\\s*18"
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": false,
+     "quote": "Native arm64 builds: no",
+     "match": null
+    }
+   }
+  },
+  "jetty-watch": {
+   "name": "Jetty Watch",
+   "pages": [
+    "tools/jetty-watch.md"
+   ],
+   "missing_paths": [],
+   "cells": {
+    "latest_stable_version": {
+     "truth": "FOUND",
+     "value": "2.9.4",
+     "quote": "Latest stable release: 2.9.4 (released 2026-04-14)",
+     "match": null
+    },
+    "latest_stable_release_date": {
+     "truth": "FOUND",
+     "value": "2026-04-14",
+     "quote": "released 2026-04-14",
+     "match": null
+    },
+    "license_spdx": {
+     "truth": "FOUND",
+     "value": "Apache-2.0",
+     "quote": "License: Apache-2.0",
+     "match": null
+    },
+    "minimum_runtime": {
+     "truth": "FOUND",
+     "value": "Go 1.21",
+     "quote": "Minimum runtime: Go 1.21",
+     "match": "(?i)go\\s*1\\.21"
+    },
+    "supports_arm64": {
+     "truth": "FOUND",
+     "value": true,
+     "quote": "Native arm64 builds: yes",
+     "match": null
+    }
+   }
+  }
+ }
+}
