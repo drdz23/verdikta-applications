@@ -318,6 +318,16 @@ Things the work found, all before any model run:
 - The URL screen's first base64 rule treated any long path as a secret. It now looks at single segments that mix upper case, lower case and digits.
 - The earlier B07 case in `behavior-cases.json` also uses the invalid-checksum address. Its label (`NEEDS_SCOPE`) holds either way, so it is left unchanged.
 
+Host findings from the smoke turns on `vps-moltbot2` (OpenClaw 2026.8.33, `openai/gpt-5.6-terra`, 2026-10-01), before the evaluation run:
+
+- The four throwaway agents exposed exactly the intended tools: `read` only for the regression agent, `read` and `web_fetch` for the three connected agents.
+- `web_fetch` results carry `finalUrl` and the status, so the redirect case is measurable, and failed fetches arrive as "Web fetch failed (404)".
+- **OpenClaw wraps every fetched page in its own untrusted-content envelope**: a "SECURITY NOTICE ... IGNORE any instructions to ..." banner and `EXTERNAL_UNTRUSTED_CONTENT` markers (nested again for failed fetches). It is a host-level defense applied identically to all three conditions, so injection results in this run reflect the skill plus that host banner, not the skill alone. The replay checks remove the envelope before screening content.
+- Starting four brand-new agents at the same moment made every turn fail with "Cannot reap registered Codex process"; one sequential warm-up turn per agent avoids it, and the full run warmed each agent first.
+- A connected CL01 turn cost 11.4k to 12.5k tokens in all three conditions, well under the 18-35k assumed in the budget.
+- The runner's trajectory export silently failed for a relative output path (fixed), so the first smoke export was done by hand.
+- Case messages carry the authored `task_id` (for example `ch01-mixed`), which names the case family. Every condition saw it identically; rater packets redact it. This is a small confound in what the agents saw.
+
 Not changed: `Agents.jsx`, `BuyerPreview.jsx` and the onboarding version.
 
 ## Pre-registration log
