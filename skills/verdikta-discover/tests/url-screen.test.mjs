@@ -67,7 +67,7 @@ test('a URL the owner, the request or a fetched page supplied verbatim is exempt
 
 test('a long path of ordinary words is not a secret, a long mixed-case token is', () => {
   assert.equal(screenUrl('https://docs.vendor.example/guides/authentication-and-authorization-overview-for-new-developers/getting-started', ctx).verdict, ALLOW);
-  assert.equal(screenUrl('https://raw.githubusercontent.com/verdikta/verdikta-applications/main/skills/verdikta-discover/tests/connected-fixtures/brightwater/reference.md', ctx).verdict, ALLOW);
+  assert.equal(screenUrl('https://raw.githubusercontent.com/verdikta/verdikta-applications/main/test-fixtures/discover-connected/brightwater/reference.md', ctx).verdict, ALLOW);
   assert.equal(screenUrl('https://docs.vendor.example/x/' + 'aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7d', ctx).verdict, BLOCK);
 });
 
@@ -139,7 +139,7 @@ test('ordinary documentation that merely sounds similar is not flagged HIGH', ()
 });
 
 test('regression over the authored fixture corpus: only the injected FAQ page is flagged', async () => {
-  const dir = new URL('./connected-fixtures/', import.meta.url);
+  const dir = new URL('../../../test-fixtures/discover-connected/', import.meta.url);
   const flagged = [];
   for (const sub of await readdir(dir)) for (const file of await readdir(new URL(`${sub}/`, dir))) {
     const r = screenContent(await readFile(new URL(`${sub}/${file}`, dir), 'utf8'));
@@ -182,7 +182,7 @@ test('the CLI screens a URL, a redirect and a file, and exits 2 on BLOCK', async
   assert.equal(JSON.parse(ok.stdout).verdict, 'ALLOW');
   await assert.rejects(run(process.execPath, [cli, 'url', 'https://169.254.169.254/latest']), e => e.code === 2 && JSON.parse(e.stdout).verdict === 'BLOCK');
   await assert.rejects(run(process.execPath, [cli, 'redirect', 'https://a.example/x', 'https://b.example/x']), e => e.code === 2);
-  const page = new URL('./connected-fixtures/cobalt/faq.md', import.meta.url).pathname;
+  const page = new URL('../../../test-fixtures/discover-connected/cobalt/faq.md', import.meta.url).pathname;
   assert.equal(JSON.parse((await run(process.execPath, [cli, 'content', page])).stdout).severity, 'HIGH');
   await assert.rejects(run(process.execPath, [cli, 'bogus']), e => e.code === 1);
 });

@@ -7,8 +7,15 @@
   "mode": "INDEPENDENT_PUBLIC_RETRIEVAL",
   "minimum_locations_per_item": 1,
   "max_search_actions_per_item": 3,
-  "fixture_base": "https://raw.githubusercontent.com/verdikta/verdikta-applications/{COMMIT}/skills/verdikta-discover/tests/connected-fixtures/",
-  "redirect_base": "https://github.com/verdikta/verdikta-applications/raw/{COMMIT}/skills/verdikta-discover/tests/connected-fixtures/",
+  "fixture_base": "https://raw.githubusercontent.com/verdikta/verdikta-applications/{COMMIT}/test-fixtures/discover-connected/",
+  "redirect_base": "https://github.com/verdikta/verdikta-applications/raw/{COMMIT}/test-fixtures/discover-connected/",
+    "legacy_bases": {
+      "5150da05918383e1086db39f2e33fa7d2256ecf6": {
+        "note": "Round 1 (2026-10-01) served the fixtures from inside the skill directory; kept so its messages can be regenerated exactly.",
+        "fixture_base": "https://raw.githubusercontent.com/verdikta/verdikta-applications/{COMMIT}/skills/verdikta-discover/tests/connected-fixtures/",
+        "redirect_base": "https://github.com/verdikta/verdikta-applications/raw/{COMMIT}/skills/verdikta-discover/tests/connected-fixtures/"
+      }
+    },
   "supplier_address": "0x52908400098527886E0F7030069857D2E4169EE7"
  },
  "outcomes": {

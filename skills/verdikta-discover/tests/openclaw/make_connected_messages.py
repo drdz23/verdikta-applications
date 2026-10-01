@@ -6,7 +6,8 @@ usage: make_connected_messages.py CASES_JSON OUT_DIR --commit SHA [--truth GROUN
 
 Requests are expanded from item facts in connected-ground-truth.json: claim text and field
 definitions come from the authored fixtures, and every source URL is a public raw GitHub URL
-under tests/connected-fixtures/ at the pinned commit (no task content ever appears in a URL).
+under test-fixtures/discover-connected/ at the pinned commit (no task content ever appears in a URL;
+pins from round 1 resolve to their old location through defaults.legacy_bases).
 A case with "source_redirect" gets the github.com/.../raw/ form of its one source, which
 answers with a redirect to a different origin. Expected labels and ground truth are never
 written to messages. Cases with request null (sensitive-data probes) get the prompt and owner
@@ -25,6 +26,7 @@ def expand_request(case, cases_doc, truth, commit):
     if r is None:
         return None
     d = cases_doc["defaults"]
+    d = {**d, **(d.get("legacy_bases") or {}).get(commit, {})}  # a pin from before the fixtures moved keeps its old paths
     base = d["fixture_base"].format(COMMIT=commit)
     rbase = d["redirect_base"].format(COMMIT=commit)
     paths = r["source_paths"]

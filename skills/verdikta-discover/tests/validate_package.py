@@ -156,7 +156,7 @@ check('Behavior fixture suite contains 30 unique case IDs',len(load('tests/behav
 check('Behavior suite explicitly marked NOT_RUN',load('tests/behavior-cases.json')['status']=='NOT_RUN')
 
 # ---- Connected-agent evaluation assets: every authored claim and cell must have its known answer in the fixtures.
-FIX=ROOT/'tests'/'connected-fixtures'
+FIX=ROOT.parents[1]/'test-fixtures'/'discover-connected'
 def fixture(path): return (FIX/path).read_text() if (FIX/path).is_file() else None
 def has(path,text): body=fixture(path); return body is not None and text in body
 def lacks(paths,terms): return all(t.lower() not in (fixture(p) or '').lower() for p in paths for t in terms)

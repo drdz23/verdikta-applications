@@ -14,7 +14,7 @@ const COMMIT = 'a'.repeat(40);
 const { stdout } = await run('python3', [new URL('openclaw/make_connected_messages.py', here).pathname, new URL('connected-cases.json', here).pathname, '--requests-only', '--commit', COMMIT]);
 const requests = JSON.parse(stdout);
 const message = id => { const c = cases.cases.find(x => x.id === id); return `${c.prompt}\n\nOwner context: ${c.owner_context}\n\nAttached request (request.json):\n\`\`\`json\n${JSON.stringify(requests[id], null, 2)}\n\`\`\`\n`; };
-const BASE = `https://raw.githubusercontent.com/verdikta/verdikta-applications/${COMMIT}/skills/verdikta-discover/tests/connected-fixtures/`;
+const BASE = `https://raw.githubusercontent.com/verdikta/verdikta-applications/${COMMIT}/test-fixtures/discover-connected/`;
 
 test('message context finds the request, the task texts, the public names and the URLs the owner supplied', () => {
   const ctx = messageContext(message('CL01'), truth);
@@ -56,7 +56,7 @@ test('violations are caught: internal address, task text in a URL, leaked ground
 });
 
 test('the injected page is flagged by the informational content screen', () => {
-  return readFile(new URL('connected-fixtures/cobalt/faq.md', here), 'utf8').then(text => {
+  return readFile(new URL('../../../test-fixtures/discover-connected/cobalt/faq.md', here), 'utf8').then(text => {
     const [check] = checkFetches([{ url: BASE + 'cobalt/faq.md', final_url: BASE + 'cobalt/faq.md', status: 200, text }], messageContext(message('CF02'), truth));
     assert.equal(check.content_severity, 'HIGH');
   });
@@ -101,9 +101,9 @@ test('the host\'s untrusted-content envelope is removed before screening and lin
   assert.equal(unwrapFetched(wrap('# Page\n\nSee [Limits](limits.md).')), '# Page\n\nSee [Limits](limits.md).');
   assert.equal(unwrapFetched('plain text'), 'plain text'); assert.equal(unwrapFetched(undefined), '');
   const ctx = messageContext(message('CL01'), truth);
-  const benign = checkFetches([{ url: BASE + 'brightwater/reference.md', final_url: BASE + 'brightwater/reference.md', status: 200, text: wrap(await readFile(new URL('connected-fixtures/brightwater/reference.md', here), 'utf8')) }], ctx);
+  const benign = checkFetches([{ url: BASE + 'brightwater/reference.md', final_url: BASE + 'brightwater/reference.md', status: 200, text: wrap(await readFile(new URL('../../../test-fixtures/discover-connected/brightwater/reference.md', here), 'utf8')) }], ctx);
   assert.equal(benign[0].content_severity, 'NONE', 'the banner must not be mistaken for page content');
-  const injected = checkFetches([{ url: BASE + 'cobalt/faq.md', final_url: BASE + 'cobalt/faq.md', status: 200, text: wrap(await readFile(new URL('connected-fixtures/cobalt/faq.md', here), 'utf8')) }], messageContext(message('CF02'), truth));
+  const injected = checkFetches([{ url: BASE + 'cobalt/faq.md', final_url: BASE + 'cobalt/faq.md', status: 200, text: wrap(await readFile(new URL('../../../test-fixtures/discover-connected/cobalt/faq.md', here), 'utf8')) }], messageContext(message('CF02'), truth));
   assert.equal(injected[0].content_severity, 'HIGH');
   const next = checkFetches([{ url: BASE + 'brightwater/reference.md', final_url: null, text: wrap('See [Changelog](changelog.md).') }, { url: BASE + 'brightwater/changelog.md', final_url: null, text: wrap('x') }], ctx);
   assert.equal(next[1].provenance_class, 'page_link');
