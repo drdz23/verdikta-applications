@@ -91,6 +91,32 @@ test('submit retries lagging confirmation; resume confirms without preparing aga
  action='START';await runSubmit(f.lib,env);assert.equal(f.sent.at(-1),'startPreparedSubmission');assert.equal(prepares,1);
  state.hunter=target;await writeFile(args.state,JSON.stringify(state));await assert.rejects(runSubmit(f.lib,env),/recovery state/);
 });
+test('submit retries a lagging getSubmission after prepare and never prepares again',async t=>{
+ const dir=await mkdtemp(`${tmpdir()}/verdikta-submit-lag-`);t.after(()=>rm(dir,{recursive:true,force:true}));
+ const file=`${dir}/result.txt`;await writeFile(file,'test');
+ const bounty={evaluationCid:cid,targetHunter:creator};
+ const transaction={to:d.address,chainId:d.chainId,value:'0',data:iface.encodeFunctionData('prepareSubmission',[7,cid,hunterCid])};
+ const badId=()=>Object.assign(Error('execution reverted: "bad submissionId"'),{reason:'bad submissionId'});
+ async function run(lagReads){
+  const args={jobId:'7',file:[file],state:`${dir}/state-${lagReads}.json`},f=harness(args);let reads=0,prepares=0;const pauses=[];
+  const env={baseUrl:'https://mock.invalid',pause:async ms=>pauses.push(ms),contract:()=>({getBounty:async()=>bounty,isAcceptingSubmissions:async()=>true,
+    getSubmission:async()=>{if(++reads<=lagReads)throw badId();return {hunter:creator,hunterCid};},nextAction:async()=> 'AWAIT_CREATOR',requiredPrepay:async()=>123n}),fetchApi:async(url)=>{
+    if(url.endsWith('/7'))return json({job:{jobId:7,onChain:true,evaluationCid:cid}});
+    if(url.endsWith('/validate'))return json({valid:true});
+    if(url.endsWith('/submit'))return json({submission:{hunterCid}});
+    if(url.endsWith('/prepare')){prepares++;return json({transaction});}
+    if(url.endsWith('/confirm'))return json({success:true});
+    throw Error(url);
+  }};
+  const send=f.lib.sendTx;f.lib.sendTx=async(...p)=>{const r=await send(...p);r.logs=[log('SubmissionPrepared',[7,0,creator,target,100n,cid])];return r;};
+  return {f,env,args,pauses,counts:()=>({reads,prepares})};
+ }
+ const ok=await run(2);await runSubmit(ok.f.lib,ok.env);
+ assert.deepEqual(ok.pauses,[1000,2000]);assert.deepEqual(ok.counts(),{reads:3,prepares:1});assert.deepEqual(ok.f.sent,['prepareSubmission']);
+ const stuck=await run(99);await assert.rejects(runSubmit(stuck.f.lib,stuck.env),/Submission 0 is prepared and saved.*--resume 0 --state/);
+ assert.deepEqual(stuck.pauses,[1000,2000,4000,8000]);assert.deepEqual(stuck.counts(),{reads:5,prepares:1});
+ assert.equal(JSON.parse(await readFile(stuck.args.state)).submissionId,'0');
+});
 test('claim shows creator payout, hunter and work CID and handles nextAction',async()=>{
  const args={jobId:'7',submissionId:'0'},f=harness(args);
  const env={baseUrl:'https://mock.invalid',contract:()=>({nextAction:async()=> 'AWAIT_CREATOR',getBounty:async()=>({creator,creatorDeterminationPayment:123n}),getSubmission:async()=>({hunter:target,hunterCid})})};
