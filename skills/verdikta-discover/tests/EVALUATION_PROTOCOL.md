@@ -1,6 +1,6 @@
 # Native discovery evaluation protocol
 
-Status: first native run on OpenClaw 2026.8.33 with `openai/gpt-5.6-terra` (2026-09-30), using the runner in `tests/openclaw/`. Hermes and a second runtime/model combination remain NOT RUN. The package validation script does not test an LLM.
+Status: native runs on OpenClaw 2026.8.33 with `openai/gpt-5.6-terra` (2026-09-30 to 2026-10-01), using the runner in `tests/openclaw/`. The latest run used a read-only agent (no web fetch), realistic fixtures and three samples per case. It met every pilot gate below on the 30 authored cases and on both holdout sets; with the expected labels alone (ignoring `acceptable_decisions`) the positive gate scores 7/10. Hermes and a second runtime/model combination remain NOT RUN. The package validation script does not test an LLM.
 
 ## Reproducible procedure for Codex
 
