@@ -104,6 +104,10 @@ check('No wallet/API-key runtime prerequisites in discovery frontmatter',not any
 
 refs=re.findall(r'`(references/[^`]+\.md)`',skill)
 check('All referenced skill documents exist',bool(refs) and all((ROOT/p).is_file() for p in refs))
+docs=skill+''.join(p.read_text() for p in (ROOT/'references').glob('*.md'))
+named=set(re.findall(r'`((?:templates|examples|scripts|schemas)/[^`\s]+)`',docs))
+check('Every template, example, script or schema path the skill names exists',bool(named) and all((ROOT/p).is_file() for p in named))
+check('The skill names the preview bundle and every template file',all(f in docs for f in ['scripts/preview.bundle.mjs']+[f'templates/{t}' for t in ('source-check-v1.template.json','source-check-v1.rubric.json','evidence-pack-v1.template.json','evidence-pack-v1.rubric.json')]))
 check('New skill has no dependency gate under documented metadata model','metadata' not in front)
 
 for kind in ['source-check-v1','evidence-pack-v1']:
