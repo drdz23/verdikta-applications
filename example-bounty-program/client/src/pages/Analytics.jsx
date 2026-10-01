@@ -51,6 +51,14 @@ ChartJS.register(
   Legend
 );
 
+// Chart text/grid colours follow the theme (CSS can't reach canvas drawing).
+const prefersDark = typeof window !== 'undefined'
+  && typeof window.matchMedia === 'function'
+  && window.matchMedia('(prefers-color-scheme: dark)').matches;
+ChartJS.defaults.color = prefersDark ? '#94a3b8' : '#64748b';
+ChartJS.defaults.borderColor = prefersDark ? 'rgba(148, 163, 184, 0.18)' : 'rgba(0, 0, 0, 0.1)';
+ChartJS.defaults.elements.arc.borderColor = prefersDark ? '#1e293b' : '#ffffff';
+
 // Chart color palette
 const COLORS = {
   active: '#22c55e',
@@ -510,26 +518,19 @@ function Analytics() {
             <div className="chart-container chart-doughnut">
               <Doughnut data={bountyChartData} options={bountyChartOptions} />
               <div className="custom-legend">
-                <span className="legend-item" title={BOUNTY_STATUS_DESCRIPTIONS.Open}>
-                  <span className="legend-color" style={{ backgroundColor: COLORS.open }}></span>
-                  Open
-                </span>
-                <span className="legend-item" title={BOUNTY_STATUS_DESCRIPTIONS.Expired}>
-                  <span className="legend-color" style={{ backgroundColor: COLORS.expired }}></span>
-                  Expired
-                </span>
-                <span className="legend-item" title={BOUNTY_STATUS_DESCRIPTIONS.Awarded}>
-                  <span className="legend-color" style={{ backgroundColor: COLORS.awarded }}></span>
-                  Awarded
-                </span>
-                <span className="legend-item" title={BOUNTY_STATUS_DESCRIPTIONS.Closed}>
-                  <span className="legend-color" style={{ backgroundColor: COLORS.closed }}></span>
-                  Closed
-                </span>
-                <span className="legend-item" title={BOUNTY_STATUS_DESCRIPTIONS.Orphaned}>
-                  <span className="legend-color" style={{ backgroundColor: COLORS.orphaned }}></span>
-                  Orphaned
-                </span>
+                {/* Only statuses present in the chart; zero-count entries just clutter the legend */}
+                {[
+                  ['Open', 'OPEN', COLORS.open],
+                  ['Expired', 'EXPIRED', COLORS.expired],
+                  ['Awarded', 'AWARDED', COLORS.awarded],
+                  ['Closed', 'CLOSED', COLORS.closed],
+                  ['Orphaned', 'ORPHANED', COLORS.orphaned],
+                ].filter(([, key]) => (data?.bounties?.byStatus?.[key] || 0) > 0).map(([label, key, color]) => (
+                  <span key={key} className="legend-item" title={BOUNTY_STATUS_DESCRIPTIONS[label]}>
+                    <span className="legend-color" style={{ backgroundColor: color }}></span>
+                    {label}
+                  </span>
+                ))}
               </div>
             </div>
           )}

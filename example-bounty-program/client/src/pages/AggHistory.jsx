@@ -3,7 +3,7 @@
  * Shows full arbiter evaluation lifecycle for a given Verdikta aggregation ID
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Activity,
@@ -305,7 +305,10 @@ function AggHistory() {
           <div className="fulfillment-details">
             <div className="detail-row">
               <span className="detail-label">Block:</span>
-              <span className="detail-value">{requestEvent.block}</span>
+              <span className="detail-value">
+                {requestEvent.block}
+                {requestEvent.timestamp ? ` (${formatTime(requestEvent.timestamp)})` : ''}
+              </span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Tx Hash:</span>
@@ -406,6 +409,70 @@ function AggHistory() {
         </div>
       )}
 
+      {/* Timing: block numbers + timestamps of each arbiter's lifecycle events */}
+      {slots && slots.length > 0 && slots.some(s => s.timing) && (
+        <div className="analytics-section">
+          <h2><Clock size={20} /> Timing</h2>
+          <p className="timing-hint">
+            Block and time of each event per arbiter. The offset (+m:ss) is measured from the request
+            {requestEvent?.timestamp ? ` at ${formatTime(requestEvent.timestamp)}` : ''}.
+          </p>
+          <div className="slots-table timing-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Slot</th>
+                  <th>Arbiter Addr</th>
+                  <th>Job ID</th>
+                  <th>Selected</th>
+                  <th>Commit</th>
+                  <th>Reveal Req</th>
+                  <th>Reveal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slots.map(slot => {
+                  const t = slot.timing || {};
+                  const revealEvt = t.reveal || t.failure;
+                  const revealFailed = !t.reveal && !!t.failure;
+                  return (
+                    <tr key={`t-${slot.slot}`}>
+                      <td>{slot.slot}</td>
+                      <td className="oracle-cell">
+                        <a
+                          href={`${networkConfig.explorer}/address/${slot.oracle}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="oracle-link"
+                        >
+                          {slot.oracle.slice(0, 8)}...{slot.oracle.slice(-4)}
+                          <ExternalLink size={10} />
+                        </a>
+                      </td>
+                      <td className="oracle-cell" title={slot.jobId || ''}>
+                        {slot.jobId ? (
+                          <span className="jobid-cell">
+                            {slot.jobId.slice(0, 8)}...{slot.jobId.slice(-4)}
+                            <button className="copy-icon-btn" onClick={() => handleCopy(slot.jobId, `tjob-${slot.slot}`)}>
+                              {copied === `tjob-${slot.slot}` ? <CheckCircle size={11} className="icon-ok" /> : <Copy size={11} />}
+                            </button>
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <TimingCell evt={t.selected} base={requestEvent?.timestamp} />
+                      <TimingCell evt={t.commit} base={requestEvent?.timestamp} />
+                      <TimingCell evt={t.revealRequest} base={requestEvent?.timestamp} />
+                      <TimingCell evt={revealEvt} base={requestEvent?.timestamp} failed={revealFailed} />
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <TimingScatter slots={slots} requestTimestamp={requestEvent?.timestamp} />
+        </div>
+      )}
+
       {/* Fulfillment */}
       {fulfillment && (
         <div className="analytics-section">
@@ -432,7 +499,12 @@ function AggHistory() {
             )}
             <div className="detail-row">
               <span className="detail-label">Block:</span>
-              <span className="detail-value">{fulfillment.block}</span>
+              <span className="detail-value">
+                {fulfillment.block}
+                {fulfillment.timestamp ? ` (${formatTime(fulfillment.timestamp)}` : ''}
+                {fulfillment.timestamp && requestEvent?.timestamp ? `, ${formatOffset(fulfillment.timestamp - requestEvent.timestamp)} after request` : ''}
+                {fulfillment.timestamp ? ')' : ''}
+              </span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Tx Hash:</span>
@@ -453,6 +525,371 @@ function AggHistory() {
 
     </div>
   );
+}
+
+/** Format a unix timestamp (seconds) as a local date/time string. */
+function formatTime(ts) {
+  if (!ts) return '';
+  return new Date(ts * 1000).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+}
+
+/** Format a duration in seconds as +m:ss (or +h:mm:ss beyond an hour). */
+function formatOffset(seconds) {
+  if (seconds == null || Number.isNaN(seconds)) return '';
+  const sign = seconds < 0 ? '-' : '+';
+  const abs = Math.abs(Math.round(seconds));
+  const h = Math.floor(abs / 3600);
+  const m = Math.floor((abs % 3600) / 60);
+  const s = abs % 60;
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
+  return `${sign}${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Timing cell: block number (linked to the tx), wall-clock time, and offset
+ * from the request. `evt` is { block, timestamp, txHash } or null.
+ */
+function TimingCell({ evt, base, failed }) {
+  if (!evt || evt.block == null) {
+    return <td><span className="icon-na">-</span></td>;
+  }
+  const offset = (base && evt.timestamp) ? formatOffset(evt.timestamp - base) : null;
+  return (
+    <td className={`timing-cell${failed ? ' timing-failed' : ''}`} title={evt.txHash || ''}>
+      <div className="timing-block">
+        {evt.txHash ? (
+          <a
+            href={`${networkConfig.explorer}/tx/${evt.txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="oracle-link"
+          >
+            #{evt.block} <ExternalLink size={10} />
+          </a>
+        ) : `#${evt.block}`}
+        {failed && <XCircle size={12} className="icon-fail" title="Reveal rejected" />}
+      </div>
+      <div className="timing-time">{evt.timestamp ? formatTime(evt.timestamp) : 'time unavailable'}</div>
+      {offset && <div className="timing-offset">{offset}</div>}
+    </td>
+  );
+}
+
+/**
+ * Scatter plot: one row per unique arbiter address (y), time since the request (x).
+ * Commits and reveals are separate series; a rejected reveal is drawn hollow.
+ */
+const SCATTER_SERIES = {
+  commit: { label: 'Commit', color: '#2a78d6' },
+  reveal: { label: 'Reveal', color: '#eb6834' }
+};
+
+function TimingScatter({ slots, requestTimestamp }) {
+  const [hover, setHover] = useState(null);
+  const svgRef = useRef(null);
+
+  // Collect points: { arbiter, kind, slot, block, ts, rejected }
+  const points = [];
+  for (const s of slots) {
+    const t = s.timing || {};
+    if (t.commit?.timestamp) {
+      points.push({ arbiter: s.oracle, kind: 'commit', slot: s.slot, block: t.commit.block, ts: t.commit.timestamp, rejected: false });
+    }
+    const rev = t.reveal || t.failure;
+    if (rev?.timestamp) {
+      points.push({ arbiter: s.oracle, kind: 'reveal', slot: s.slot, block: rev.block, ts: rev.timestamp, rejected: !t.reveal });
+    }
+  }
+  if (points.length === 0) return null;
+
+  // Reference lines: when arbiters were selected (commit phase opens) and when
+  // reveals were requested (reveal phase opens). Usually one block each, but
+  // keep every distinct timestamp.
+  const selectedTs = [...new Set(slots.map(s => s.timing?.selected?.timestamp).filter(Boolean))];
+  const revealReqTs = [...new Set(slots.map(s => s.timing?.revealRequest?.timestamp).filter(Boolean))];
+
+  // Time base: the request, else the earliest event
+  const base = requestTimestamp || Math.min(...points.map(p => p.ts), ...selectedTs);
+  for (const p of points) p.x = p.ts - base;
+
+  // Group points that land on exactly the same spot (same arbiter, same
+  // timestamp, same kind) so one hover shows every event stacked there.
+  // Kind is part of the key: an arbiter holding several slots can have one
+  // slot's reveal land in the same block as another slot's commit, and a
+  // mixed group would draw one colour on top of the other, hiding an event.
+  const groups = [];
+  const groupIndex = new Map();
+  for (const p of points) {
+    const key = `${p.arbiter}|${p.ts}|${p.kind}`;
+    if (!groupIndex.has(key)) {
+      groupIndex.set(key, groups.length);
+      groups.push({ arbiter: p.arbiter, ts: p.ts, x: p.x, kind: p.kind, items: [] });
+    }
+    groups[groupIndex.get(key)].items.push(p);
+  }
+  for (const g of groups) g.items.sort((a, b) => a.slot - b.slot);
+
+  // Where a commit group and a reveal group coincide (same arbiter + instant),
+  // nudge them apart vertically so both dots stay visible and hoverable.
+  const COINCIDENT_DY = 6;
+  const spotCount = new Map();
+  for (const g of groups) {
+    const spot = `${g.arbiter}|${g.ts}`;
+    spotCount.set(spot, (spotCount.get(spot) || 0) + 1);
+  }
+  for (const g of groups) {
+    const shared = spotCount.get(`${g.arbiter}|${g.ts}`) > 1;
+    g.dy = shared ? (g.kind === 'commit' ? -COINCIDENT_DY : COINCIDENT_DY) : 0;
+  }
+
+  // Y: unique arbiters in first-seen slot order
+  const arbiters = [];
+  for (const s of slots) if (!arbiters.includes(s.oracle)) arbiters.push(s.oracle);
+
+  // Layout (viewBox units = px at 1x)
+  const margin = { top: 12, right: 20, bottom: 34, left: 118 };
+  const rowH = 28;
+  const width = 720;
+  const plotW = width - margin.left - margin.right;
+  const plotH = arbiters.length * rowH;
+  const height = margin.top + plotH + margin.bottom;
+
+  const maxX = Math.max(60, ...points.map(p => p.x), ...revealReqTs.map(t => t - base), ...selectedTs.map(t => t - base));
+  const tickStep = niceTickStep(maxX);
+  const xMax = Math.ceil(maxX / tickStep) * tickStep;
+  const xScale = (x) => margin.left + (x / xMax) * plotW;
+  const yScale = (i) => margin.top + i * rowH + rowH / 2;
+  const ticks = [];
+  for (let v = 0; v <= xMax; v += tickStep) ticks.push(v);
+
+  const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
+
+  for (const g of groups) {
+    g.cx = xScale(g.x);
+    g.cy = yScale(arbiters.indexOf(g.arbiter)) + g.dy;
+  }
+
+  // Hover is resolved by nearest group to the pointer (in viewBox units), not
+  // by stacked per-dot hit areas — overlapping hit circles let a later dot
+  // swallow its neighbour's hover.
+  const HOVER_RADIUS = 14;
+  const handlePointerMove = (e) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const px = (e.clientX - rect.left) * (width / rect.width);
+    const py = (e.clientY - rect.top) * (height / rect.height);
+    let best = null;
+    let bestD = Infinity;
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi];
+      const d = Math.hypot(g.cx - px, g.cy - py);
+      if (d < bestD) { bestD = d; best = gi; }
+    }
+    if (best !== null && bestD <= HOVER_RADIUS) {
+      if (!hover || hover.gi !== best) setHover({ gi: best, cx: groups[best].cx, cy: groups[best].cy, g: groups[best] });
+      return;
+    }
+    // No dot nearby: fall back to the reference lines (within the plot rows).
+    if (py >= margin.top && py <= margin.top + plotH) {
+      const lines = [
+        ...selectedTs.map(t => ({ kind: 'commit', label: 'Arbiters selected', ts: t })),
+        ...revealReqTs.map(t => ({ kind: 'reveal', label: 'Reveal requested', ts: t }))
+      ];
+      let bestLine = null;
+      let bestLD = Infinity;
+      for (const ln of lines) {
+        const d = Math.abs(xScale(ln.ts - base) - px);
+        if (d < bestLD) { bestLD = d; bestLine = ln; }
+      }
+      if (bestLine && bestLD <= 6) {
+        const key = `line-${bestLine.kind}-${bestLine.ts}`;
+        if (!hover || hover.gi !== key) {
+          setHover({ gi: key, cx: xScale(bestLine.ts - base), cy: py, line: bestLine });
+        }
+        return;
+      }
+    }
+    if (hover) setHover(null);
+  };
+
+  return (
+    <div className="timing-scatter">
+      <div className="scatter-legend">
+        {Object.entries(SCATTER_SERIES).map(([k, v]) => (
+          <span key={k} className="scatter-legend-item">
+            <span className="scatter-swatch" style={{ background: v.color }} />
+            {v.label}
+          </span>
+        ))}
+        {points.some(p => p.rejected) && (
+          <span className="scatter-legend-item">
+            <span className="scatter-swatch hollow" style={{ borderColor: SCATTER_SERIES.reveal.color }} />
+            Reveal (rejected)
+          </span>
+        )}
+        {selectedTs.length > 0 && (
+          <span className="scatter-legend-item">
+            <span className="scatter-linekey vertical" style={{ background: SCATTER_SERIES.commit.color }} />
+            Selected
+          </span>
+        )}
+        {revealReqTs.length > 0 && (
+          <span className="scatter-legend-item">
+            <span className="scatter-linekey vertical" style={{ background: SCATTER_SERIES.reveal.color }} />
+            Reveal requested
+          </span>
+        )}
+      </div>
+      <div className="scatter-wrap">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          width="100%"
+          role="img"
+          aria-label="Commit and reveal times per arbiter"
+          ref={svgRef}
+          onPointerMove={handlePointerMove}
+          onPointerLeave={() => setHover(null)}
+        >
+          {/* Row bands + y labels */}
+          {arbiters.map((a, i) => (
+            <g key={a}>
+              <line
+                x1={margin.left} x2={margin.left + plotW}
+                y1={yScale(i)} y2={yScale(i)}
+                className="scatter-rowline"
+              />
+              <text x={margin.left - 8} y={yScale(i)} className="scatter-ylabel" dominantBaseline="middle" textAnchor="end">
+                {short(a)}
+              </text>
+            </g>
+          ))}
+          {/* Vertical gridlines + x ticks */}
+          {ticks.map(v => (
+            <g key={v}>
+              <line
+                x1={xScale(v)} x2={xScale(v)}
+                y1={margin.top} y2={margin.top + plotH}
+                className="scatter-grid"
+              />
+              <text x={xScale(v)} y={margin.top + plotH + 16} className="scatter-xlabel" textAnchor="middle">
+                {formatOffset(v)}
+              </text>
+            </g>
+          ))}
+          <text x={margin.left + plotW / 2} y={height - 4} className="scatter-xtitle" textAnchor="middle">
+            time since request
+          </text>
+          {/* Reference lines: selection (commit phase opens) and reveal requests */}
+          {selectedTs.map(t => (
+            <line
+              key={`sel-${t}`}
+              x1={xScale(t - base)} x2={xScale(t - base)}
+              y1={margin.top} y2={margin.top + plotH}
+              className="scatter-refline"
+              stroke={SCATTER_SERIES.commit.color}
+            >
+            </line>
+          ))}
+          {revealReqTs.map(t => (
+            <line
+              key={`rr-${t}`}
+              x1={xScale(t - base)} x2={xScale(t - base)}
+              y1={margin.top} y2={margin.top + plotH}
+              className="scatter-refline"
+              stroke={SCATTER_SERIES.reveal.color}
+            >
+            </line>
+          ))}
+          {/* Points: one visual per stacked group; keyboard-focusable, but pointer
+              hover is resolved by the svg-level nearest-group handler above. */}
+          {groups.map((g, gi) => {
+            const { cx, cy } = g;
+            const active = hover && hover.gi === gi;
+            const stacked = g.items.length > 1;
+            // Stacked groups are drawn a little larger so the count fits inside
+            const r = (stacked ? 7 : 5) + (active ? 1 : 0);
+            const topItem = g.items[g.items.length - 1];
+            return (
+              <g
+                key={gi}
+                onFocus={() => setHover({ gi, cx, cy, g })}
+                onBlur={() => setHover(null)}
+                tabIndex={0}
+                className="scatter-hit"
+              >
+                {g.items.map((p, i) => (
+                  <circle
+                    key={i}
+                    cx={cx} cy={cy}
+                    r={r}
+                    fill={p.rejected ? 'var(--bg)' : SCATTER_SERIES[p.kind].color}
+                    stroke={p.rejected ? SCATTER_SERIES[p.kind].color : 'var(--bg)'}
+                    strokeWidth={2}
+                  />
+                ))}
+                {stacked && (
+                  <text
+                    x={cx} y={cy}
+                    className="scatter-count"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill={topItem.rejected ? SCATTER_SERIES[topItem.kind].color : 'var(--bg)'}
+                  >
+                    {g.items.length}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+        {hover && (
+          <div
+            className={`scatter-tooltip${hover.cy < height / 2 ? ' below' : ''}`}
+            style={{
+              left: `${(hover.cx / width) * 100}%`,
+              top: `${(hover.cy / height) * 100}%`
+            }}
+          >
+            {hover.line ? (
+              <>
+                <div className="scatter-tooltip-value">{formatOffset(hover.line.ts - base)}</div>
+                <div className="scatter-tooltip-row">
+                  <span className="scatter-linekey vertical" style={{ background: SCATTER_SERIES[hover.line.kind].color }} />
+                  {hover.line.label}
+                </div>
+                <div className="scatter-tooltip-row">{formatTime(hover.line.ts)}</div>
+              </>
+            ) : (
+              <>
+                <div className="scatter-tooltip-value">{formatOffset(hover.g.x)}</div>
+                {hover.g.items.map((p, i) => (
+                  <div key={i} className="scatter-tooltip-row">
+                    <span className="scatter-linekey" style={{ background: SCATTER_SERIES[p.kind].color }} />
+                    {SCATTER_SERIES[p.kind].label}{p.rejected ? ' (rejected)' : ''} · slot {p.slot} · block #{p.block}
+                  </div>
+                ))}
+                <div className="scatter-tooltip-row">{formatTime(hover.g.ts)} · {short(hover.g.arbiter)}</div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Pick a tick step (seconds) that yields roughly 4-8 ticks. */
+function niceTickStep(maxSeconds) {
+  const steps = [10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+  for (const st of steps) {
+    if (maxSeconds / st <= 8) return st;
+  }
+  return 3600 * Math.ceil(maxSeconds / 3600 / 8);
 }
 
 /**

@@ -2,7 +2,6 @@
   "rubricJson": {
     "title": "Technical Blog Post on Solidity",
     "description": "Write a comprehensive blog post explaining Solidity smart contract development for beginners",
-    "threshold": 82,
     "criteria": [
       {
         "id": "originality",
@@ -26,13 +25,13 @@
         "id": "completeness",
         "description": "Covers essential topics: variables, functions, events, testing",
         "must": false,
-        "weight": 0.20
+        "weight": 0.2
       },
       {
         "id": "presentation",
         "description": "Well-formatted with proper code blocks and structure",
         "must": false,
-        "weight": 0.20
+        "weight": 0.2
       }
     ],
     "forbidden_content": [
@@ -42,11 +41,12 @@
     ],
     "deliverable_requirements": {
       "min_words": 1500,
-      "format": ["markdown", "pdf"]
+      "format": [
+        "markdown",
+        "pdf"
+      ]
     }
   },
-  "classId": 128
+  "classId": 128,
+  "threshold": 82
 }
-
-
-

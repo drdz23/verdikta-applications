@@ -50,6 +50,8 @@ jest.mock('../config', () => ({
 }));
 
 const jobStorage = require('../utils/jobStorage');
+const logger = require('../utils/logger');
+const fs = require('fs').promises;
 
 beforeEach(() => {
   mockStorageData = { jobs: [], nextId: 0 };
@@ -172,5 +174,72 @@ describe('jobs.json concurrency / orphan-race', () => {
     await jobStorage.withStorage((s) => { s.jobs.push({ jobId: 0 }); });
     const result = await jobStorage.readStorage();
     expect(result.jobs).toHaveLength(1);
+  });
+});
+
+it('legacy and review-build jobs list numeric amounts while preserving exact wei', async()=>{
+ mockStorageData={jobs:[
+  {jobId:0,status:'OPEN',bountyAmount:0.001},
+  {jobId:1,status:'OPEN',bountyAmount:'0.123456789012345678'},
+  {jobId:2,status:'OPEN',bountyAmount:1,bountyAmountWei:'123456789012345678'}
+ ],nextId:3};
+ const listed=await jobStorage.listJobs({currentContractOnly:false,includeOrphans:true});
+ expect(listed.every(j=>typeof j.bountyAmount==='number')).toBe(true);
+ expect(listed.find(j=>j.jobId===1).bountyAmountWei).toBe('123456789012345678');
+ expect(listed.find(j=>j.jobId===2).bountyAmount).toBe(0.12345678901234568);
+ const detail=await jobStorage.getJob(1);expect(detail.bountyAmountWei).toBe('123456789012345678');expect(typeof detail.bountyAmount).toBe('number');
+ const stored=await jobStorage.readStorage();expect(stored.jobs.find(j=>j.jobId===1).bountyAmountWei).toBe('123456789012345678');
+});
+
+describe.each(['list', 'detail'])('malformed amount isolation on %s reads', (entrypoint) => {
+  it.each([
+    ['invalid decimal', { bountyAmount: 'not-an-amount' }],
+    ['invalid wei', { bountyAmount: 0.1, bountyAmountWei: 'not-wei' }],
+    ['overflowing wei', { bountyAmount: 0.1, bountyAmountWei: (1n << 256n).toString() }],
+  ])('logs and skips an %s while migrating healthy records', async (_label, amounts) => {
+    const malformed = { jobId: 1, status: 'open', primaryCid: 'QmPreserved', ...amounts };
+    mockStorageData = {
+      jobs: [
+        { jobId: 0, status: 'open', bountyAmount: '0.001' },
+        malformed,
+        { jobId: 2, status: 'open', primaryCid: 'QmHealthy', bountyAmount: '0.123456789012345678' },
+      ],
+      nextId: 3,
+    };
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const read = () => entrypoint === 'list'
+      ? jobStorage.listJobs({ currentContractOnly: false, includeOrphans: true })
+      : jobStorage.getJob(2);
+
+    try {
+      const result = await read();
+      const healthy = entrypoint === 'list' ? result.find(j => j.jobId === 2) : result;
+      expect(healthy).toMatchObject({
+        status: 'OPEN',
+        evaluationCid: 'QmHealthy',
+        bountyAmount: 0.12345678901234568,
+        bountyAmountWei: '123456789012345678',
+      });
+      expect(warn).toHaveBeenCalledWith(
+        'Skipping job normalization due to invalid bounty amount',
+        { jobId: 1, error: expect.any(String) },
+      );
+
+      const stored = await jobStorage.readStorage();
+      expect(stored.jobs).toHaveLength(3);
+      expect(stored.jobs.find(j => j.jobId === 0)).toMatchObject({
+        status: 'OPEN', bountyAmount: 0.001, bountyAmountWei: '1000000000000000',
+      });
+      expect(stored.jobs.find(j => j.jobId === 1)).toEqual(malformed);
+      expect(stored.jobs.find(j => j.jobId === 2)).toEqual(healthy);
+      expect(healthy).not.toHaveProperty('primaryCid');
+
+      // A skipped record alone must not cause a storage rewrite on every read.
+      fs.writeFile.mockClear();
+      await expect(read()).resolves.toEqual(result);
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

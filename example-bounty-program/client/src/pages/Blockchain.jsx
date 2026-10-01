@@ -471,6 +471,28 @@ def submit_work(bounty_id, hunter_cid):
     print('Evaluation started!')
     return submission_id`;
 
+  // Foundry's `cast` decodes the getBounty tuple itself — no library code, no ABI
+  // file, and no hand-counting of byte offsets (the struct contains a dynamic
+  // string, so word-scanning decoders misread every field after it).
+  const castExample = `# Read a bounty with Foundry (cast) — the tuple is decoded for you
+ESCROW=${activeContract.bountyEscrow || '<BountyEscrow address>'}
+RPC=${activeContract.rpcUrl || '<rpc url>'}
+
+cast call $ESCROW \\
+  "getBounty(uint256)((address,string,uint64,uint8,uint256,uint256,uint64,uint8,address,uint256,address,uint256,uint256,uint64,(uint256,uint256,uint256,uint256)))" \\
+  <bountyId> --rpc-url $RPC
+
+# Field order: creator, evaluationCid, requestedClass, threshold, payoutWei, createdAt,
+# submissionDeadline, status (0 Open, 1 Awarded, 2 Closed), winner, submissions, targetHunter,
+# creatorDeterminationPayment, arbiterDeterminationPayment, creatorAssessmentWindowSize,
+# oracle (maxOracleFee, alpha, estimatedBaseCost, maxFeeBasedScaling)
+
+# Lens views are served at the same address (merged ABI: /api/abi/BountyEscrow.json)
+cast call $ESCROW "getEffectiveBountyStatus(uint256)(string)" <bountyId> --rpc-url $RPC
+cast call $ESCROW "nextAction(uint256,uint256)(string)" <bountyId> <submissionId> --rpc-url $RPC
+cast call $ESCROW "requiredPrepay(uint256)(uint256)" <bountyId> --rpc-url $RPC
+cast call $ESCROW "prepareCutoff(uint256)(uint256)" <bountyId> --rpc-url $RPC`;
+
   const ipfsStructure = `# Evaluation Package (evaluationCid)
 # Format: ZIP archive uploaded to IPFS
 evaluation-package.zip
@@ -699,6 +721,25 @@ submission-package.zip
               </tr>
             </tbody>
           </table>
+        </div>
+        <div className="callout callout-info" style={{ marginTop: '1rem' }}>
+          <FileCode size={24} />
+          <div>
+          <strong>Contract ABI — available without this site.</strong> Use the merged ABI: the
+          escrow's own ABI plus the lens views it serves at its own address
+          (<code>nextAction</code>, <code>getEffectiveBountyStatus</code>,{' '}
+          <code>canBeClosed</code>, <code>getSubmissions</code>, <code>getBounties</code>,{' '}
+          <code>getOracleResult</code>…). Explorer copies of the escrow ABI alone omit those views.
+          The same bytes are published in three independent places:
+          {' '}<a href="https://gateway.pinata.cloud/ipfs/QmZa2NtTne6xj8c3ZBH7tPrLi2ZJwjaoKN1RyH2S6pLx59" target="_blank" rel="noopener noreferrer">IPFS</a>{' '}
+          (<code>QmZa2NtTne6xj8c3ZBH7tPrLi2ZJwjaoKN1RyH2S6pLx59</code>),
+          {' '}<a href="https://github.com/verdikta/verdikta-applications/blob/main/example-bounty-program/onchain/abi/BountyEscrow.json" target="_blank" rel="noopener noreferrer">GitHub</a>,
+          and this site's mirror <a href="/api/abi/BountyEscrow.json" target="_blank" rel="noopener noreferrer"><code>/api/abi/BountyEscrow.json</code></a>{' '}
+          (<a href="/api/abi" target="_blank" rel="noopener noreferrer"><code>/api/abi</code></a> lists addresses and links).
+          Every deployed contract is source-verified with an exact match on{' '}
+          <a href={`https://repo.sourcify.dev/${activeContract.chainId}/${activeContract.bountyEscrow}`} target="_blank" rel="noopener noreferrer">Sourcify</a>,
+          whose API needs no key.
+          </div>
         </div>
         <div className="network-info">
           <div className="network-card">
@@ -1010,6 +1051,19 @@ submission-package.zip
             </button>
           </div>
           <pre><code>{web3pyExample}</code></pre>
+        </div>
+
+        <div className="code-block" style={{ marginTop: '1.5rem' }}>
+          <div className="code-header">
+            <span>Foundry cast (shell, no library code)</span>
+            <button
+              className="btn-icon"
+              onClick={() => copyToClipboard(castExample, 'cast')}
+            >
+              {copiedCode === 'cast' ? <Check size={16} /> : <Copy size={16} />}
+            </button>
+          </div>
+          <pre><code>{castExample}</code></pre>
         </div>
       </section>
 

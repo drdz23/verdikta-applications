@@ -76,7 +76,7 @@ function Home({ walletState }) {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
-  // Recent ETH/USD price (CoinGecko, 1-min server cache) for approximate payout values
+  // Recent ETH/USD price (server proxy: Coinbase, CoinGecko fallback; 1-min cache) for approximate payout values
   const [ethPrice, setEthPrice] = useState(0);
 
   // Refs for auto-refresh and scroll
@@ -260,7 +260,7 @@ function Home({ walletState }) {
             {ethPrice > 0 && (
               <span
                 className="eth-rate-note"
-                title="Approximate USD values use a recent ETH price from CoinGecko"
+                title="Approximate USD values use a recent ETH/USD spot price"
               >
                 ETH ≈ ${formatUsd(ethPrice)}
               </span>
@@ -734,7 +734,7 @@ function JobCard({ job, ethPrice }) {
       </p>
       <div className="bounty-footer">
         <div className="payout">
-          <span className="label">Payout:</span>
+          <span className="label">Payout</span>
           <span className="amount">
             {job.bountyAmount} ETH
             {ethPrice > 0 && formatUsd(Number(job.bountyAmount) * ethPrice) && (
@@ -745,7 +745,7 @@ function JobCard({ job, ethPrice }) {
           </span>
         </div>
         <div className="submissions">
-          <span className="label">Submissions:</span>
+          <span className="label">Submissions</span>
           <span className="count">{job.submissionCount || 0}</span>
           {hasPendingEvaluation && (!isExpired || hasIncompleteEvaluation || hasAcceptedPendingClaim) && (
             <span
@@ -769,10 +769,11 @@ function JobCard({ job, ethPrice }) {
           <span className="value">{job.jobId}</span>
         </div>
         <div className="threshold">
-          <span className="label">Threshold:</span>
+          <span className="label">Threshold</span>
           <span className="value">{job.threshold}%</span>
         </div>
         <div className={`time-remaining ${isClosingSoon ? 'warning' : ''} ${isCritical ? 'critical' : ''} ${(isExpired || isClosed) ? 'closed' : ''}`}>
+          <span className="label">{(isAwarded || isClosed || isExpired) ? 'Status' : 'Time left'}</span>
           {isAwarded ? (
             <span><Trophy size={14} className="inline-icon" /> Winner paid</span>
           ) : isClosed ? (

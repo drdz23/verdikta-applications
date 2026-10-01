@@ -4,6 +4,7 @@
  */
 
 const { ethers } = require('ethers');
+const { bountyAmountWei, bountyAmountFields } = require('../utils/bountyAmounts');
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -12,12 +13,13 @@ const os = require('os');
 const fs = require('fs').promises;
 const AdmZip = require('adm-zip');
 const logger = require('../utils/logger');
+const { getEthPriceUsd } = require('../utils/ethPrice');
 const jobStorage = require('../utils/jobStorage');
 const { packageRubricHash } = require('../utils/rubricSource');
 const { config } = require('../config');
 const archiveGenerator = require('../utils/archiveGenerator');
 const archiveShapeValidator = require('../utils/archiveShapeValidator');
-const { validateRubric, validateJuryNodes, isValidFileType, MAX_FILE_SIZE,
+const { validateRubric, validateJuryNodes, normalizeBountyPayments, validateProcurement, isValidFileType, MAX_FILE_SIZE,
         oracleUnreadableReason, detectBinaryContainer, ALLOWED_ZIP_BASED_EXTENSIONS,
         parseFeeToWei, extractEvaluationWarnings } = require('../utils/validation');
 const { getVerdiktaService, isVerdiktaServiceAvailable } = require('../utils/verdiktaService');
@@ -126,7 +128,7 @@ function jobOracleSettings(job) {
  */
 function buildCreateBountyTx(job) {
   const oracle = jobOracleSettings(job);
-  const amountWei = ethers.parseEther(String(job.bountyAmount));
+  const amountWei = bountyAmountWei(job);
   const windowed = Number(job.creatorAssessmentWindowSize || 0) > 0 && job.creatorDeterminationPayment != null;
   const creatorPayWei = windowed ? ethers.parseEther(String(job.creatorDeterminationPayment)) : amountWei;
   const arbiterPayWei = windowed ? ethers.parseEther(String(job.arbiterDeterminationPayment)) : amountWei;
@@ -341,8 +343,6 @@ router.post('/create', async (req, res) => {
   logger.info('[jobs/create] incoming keys', { keys });
 
   try {
-    await ensureTmpBase();
-
     const {
       title,
       description,
@@ -398,12 +398,17 @@ router.post('/create', async (req, res) => {
     if (!/^0x[a-fA-F0-9]{40}$/.test(creator)) {
       return res.status(400).json({ error: 'Invalid creator address', details: 'Must be a valid Ethereum address' });
     }
-    if (targetHunter && !/^0x[a-fA-F0-9]{40}$/.test(targetHunter)) {
-      return res.status(400).json({ error: 'Invalid targetHunter address', details: 'Must be a valid Ethereum address' });
+    const procurementError = validateProcurement(req.body?.procurementMode, targetHunter);
+    if (procurementError) return res.status(400).json({ error: req.body?.procurementMode == null ? 'Invalid targetHunter address' : 'Invalid procurement intent', details: procurementError });
+    let payments;
+    try { payments = normalizeBountyPayments(req.body); }
+    catch (error) {
+      const label = error.code === 'INVALID_BOUNTY_WINDOW' ? 'Invalid bounty window'
+        : error.field === 'bountyAmount' && req.body?.procurementMode == null ? 'Invalid bountyAmount'
+        : 'Invalid bounty payment';
+      return res.status(400).json({ error: label, details: error.message });
     }
-    if (!Number.isFinite(Number(bountyAmount)) || Number(bountyAmount) <= 0) {
-      return res.status(400).json({ error: 'Invalid bountyAmount', details: 'Must be a positive number' });
-    }
+    const normalizedTarget = !targetHunter || ethers.getAddress(targetHunter) === ethers.ZeroAddress ? null : ethers.getAddress(targetHunter);
     if (!Number.isFinite(Number(threshold)) || Number(threshold) < 0 || Number(threshold) > 100) {
       return res.status(400).json({ error: 'Invalid threshold', details: 'Threshold must be between 0 and 100' });
     }
@@ -469,6 +474,8 @@ router.post('/create', async (req, res) => {
     if (!rubricJson && !rubricCidIn) {
       return res.status(400).json({ error: 'Missing rubric', details: 'Provide rubricJson or rubricCid' });
     }
+
+    await ensureTmpBase();
 
     // ---- Resolve rubricCid ----
     let rubricCid;
@@ -619,7 +626,7 @@ router.post('/create', async (req, res) => {
             jobId: existing.jobId,
             title: existing.title,
             description: existing.description,
-            bountyAmount: existing.bountyAmount,
+            ...bountyAmountFields(existing),
             bountyAmountUSD: existing.bountyAmountUSD,
             threshold: existing.threshold,
             rubricCid: existing.rubricCid,
@@ -639,7 +646,7 @@ router.post('/create', async (req, res) => {
     // ---- Times ----
     const now = Math.floor(Date.now() / 1000);
     const submissionOpenTime = now;
-    const submissionCloseTime = now + (Number(submissionWindowHours) * 3600);
+    const submissionCloseTime = now + payments.submissionWindowSeconds;
 
     // ---- Persist job ----
     const job = await jobStorage.createJob({
@@ -647,7 +654,7 @@ router.post('/create', async (req, res) => {
       description,
       workProductType,
       creator,
-      bountyAmount: Number(bountyAmount),
+      ...payments,
       bountyAmountUSD: Number(bountyAmountUSD || 0),
       threshold: Number(threshold),
       rubricCid,
@@ -657,13 +664,8 @@ router.post('/create', async (req, res) => {
       iterations: Number(iterations),
       submissionOpenTime,
       submissionCloseTime,
-      targetHunter: targetHunter || null,
+      targetHunter: normalizedTarget,
       publicSubmissions: !!publicSubmissions,
-      ...(creatorDeterminationPayment != null ? {
-        creatorDeterminationPayment: String(creatorDeterminationPayment),
-        arbiterDeterminationPayment: String(arbiterDeterminationPayment),
-        creatorAssessmentWindowSize: Math.trunc(Number(creatorAssessmentWindowHours) * 3600),
-      } : {}),
       // Creator-chosen oracle request settings (wei strings + integers). Passed
       // verbatim into createBounty's `oracle` struct and used for every evaluation.
       oracleSettings,
@@ -678,6 +680,7 @@ router.post('/create', async (req, res) => {
         title: job.title,
         description: job.description,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         bountyAmountUSD: job.bountyAmountUSD,
         threshold: job.threshold,
         rubricCid: job.rubricCid,
@@ -992,6 +995,7 @@ router.get('/admin/expired', async (req, res) => {
         title: job.title,
         creator: job.creator,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         deadline,
         expiredMinutesAgo: Math.floor((nowSeconds - deadline) / 60),
         localStatus: job.status,
@@ -1126,6 +1130,7 @@ router.get('/mine/action-required', async (req, res) => {
         jobId: job.jobId,
         title: job.title,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         deadline,
         expiredMinutesAgo: Math.floor((nowSeconds - deadline) / 60),
         canClose: false,
@@ -1343,8 +1348,9 @@ function buildLinkageReport(job, options = {}) {
       state: 'linked',
       onChain: true,
       syncedFromBlockchain: true,
-      detail: 'Sync service has confirmed this job matches an on-chain bounty with the same id.',
-      fix: null
+      detail: 'Sync service has confirmed this job matches an on-chain bounty with the same id.'
+      // No `fix` key: the field is optional (`fix?`) and is OMITTED — never null —
+      // when nothing needs doing, so strict clients can type it as `string | undefined`.
     };
   }
   if (job.onChain) {
@@ -2075,7 +2081,7 @@ router.post('/:jobId/submissions/:submissionId/finalize', async (req, res) => {
 
     if (oracleResult) {
       response.oracleResult = oracleResult;
-      if (oracleResult.passed && job.bountyAmount) {
+      if (oracleResult.passed && Number(job.bountyAmount) > 0) {
         response.expectedPayout = job.bountyAmount;
       }
     }
@@ -2851,6 +2857,7 @@ router.get('/', async (req, res) => {
         description: job.description,
         workProductType: job.workProductType,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         bountyAmountUSD: job.bountyAmountUSD,
         threshold: job.threshold,
         classId: job.classId,
@@ -3313,36 +3320,14 @@ router.get('/:jobId/task-spec', async (req, res) => {
 });
 
 // ==========================================================================
-// Utility: ETH price proxy (avoids client-side CORS issues with CoinGecko)
+// Utility: ETH price proxy (Coinbase spot, CoinGecko fallback; see utils/ethPrice).
 // Must be above /:jobId to avoid "eth-price" being matched as a job ID.
 // ==========================================================================
 
-let cachedEthPrice = { usd: 0, fetchedAt: 0 };
-const ETH_PRICE_CACHE_MS = 60000; // 1 minute
-
 router.get('/eth-price', async (req, res) => {
-  const now = Date.now();
-  if (cachedEthPrice.usd > 0 && (now - cachedEthPrice.fetchedAt) < ETH_PRICE_CACHE_MS) {
-    return res.json({ usd: cachedEthPrice.usd, cached: true });
-  }
-
-  try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
-      { signal: AbortSignal.timeout(5000) }
-    );
-    const data = await response.json();
-    const usd = data?.ethereum?.usd || 0;
-
-    if (usd > 0) {
-      cachedEthPrice = { usd, fetchedAt: now };
-    }
-
-    return res.json({ usd });
-  } catch (err) {
-    // Return stale cache if available, otherwise 0
-    return res.json({ usd: cachedEthPrice.usd || 0, stale: true });
-  }
+  // Response contract: { usd, source?, cached? } on success; { usd, stale: true, ... }
+  // when every source fails (usd is 0 if no price has been seen since startup).
+  return res.json(await getEthPriceUsd());
 });
 
 /* =================
@@ -3680,14 +3665,14 @@ router.get('/:jobId', async (req, res) => {
  * you at /lookup if it finds one.
  *
  * Returns a fresh on-chain snapshot of a bounty, with the server performing
- * the ABI decoding. Designed for AI agents that want to verify chain state
- * without writing their own raw-byte decoder (a common source of off-by-one
- * field offset bugs — decode via this endpoint instead).
+ * the ABI decoding. An optional convenience for AI agents: the contract is the
+ * source of truth and agents can make the same getBounty read themselves with
+ * any ABI-aware library. What this endpoint saves them is hand-written raw-byte
+ * decoding (a common source of off-by-one field offset bugs, since the tuple
+ * contains a dynamic string).
  *
  * One RPC call (getBounty); status/effectiveStatus/canBeClosed are derived
- * locally from the struct to avoid extra round trips. Use this instead of
- * hand-rolling eth_call decoders on the BountyEscrow.bounties() or
- * BountyEscrow.getBounty() tuple.
+ * locally from the struct to avoid extra round trips.
  *
  * Response shape:
  *   {
@@ -3808,7 +3793,7 @@ router.get('/:jobId/onchain-status', async (req, res) => {
                                                  //   linked | patched-not-synced |
                                                  //   not-on-chain | mismatch | untracked
       fetchedAt: new Date().toISOString(),
-      note: 'Ground truth from the BountyEscrow contract. If this disagrees with GET /api/jobs/:jobId the sync service has not yet observed the change; this endpoint is authoritative.'
+      note: 'Live read of the BountyEscrow contract, ABI-decoded server-side as a convenience. The contract itself is the source of truth: the same read can be made with any ABI-aware library and re-checked against it. If this disagrees with GET /api/jobs/:jobId the sync service has not yet observed the change; the live read wins.'
     });
   } catch (err) {
     const msg = (err?.message || '').toLowerCase();
@@ -5404,7 +5389,8 @@ router.post('/:jobId/submit/bundle/complete', async (req, res) => {
 /* ===============================
    GET publicSubmissions sign-payload helper
    Returns the canonical message string that the bounty creator must sign
-   (via personal_sign / ethers signer.signMessage) to toggle the flag.
+   (via personal_sign / ethers signer.signMessage, or a smart account's
+   signMessage for EIP-1271 wallets) to toggle the flag.
    Removes the "build the message text by hand" foot-gun — the agent fetches
    the message, signs it with the creator wallet, then PATCHes back.
    =============================== */
@@ -5444,7 +5430,7 @@ router.get('/:jobId/public-submissions/sign-payload', async (req, res) => {
       timestamp,
       validForSeconds: 300,
       next: {
-        sign: 'Sign `message` verbatim with the bounty creator wallet (ethers: signer.signMessage(message); web3: personal_sign).',
+        sign: 'Sign `message` verbatim with the bounty creator wallet (ethers: signer.signMessage(message); web3: personal_sign). Smart-contract wallets (Coinbase Smart Wallet, Base Account, agent CDP smart accounts) sign with their own signMessage; the server verifies via EIP-1271 isValidSignature.',
         submit: `PATCH /api/jobs/${jobId}/public-submissions with { publicSubmissions: ${publicSubmissions}, message, signature }`
       }
     });
@@ -5457,7 +5443,8 @@ router.get('/:jobId/public-submissions/sign-payload', async (req, res) => {
 /* ===============================
    PATCH publicSubmissions (creator-signed, off-chain)
    Toggles the off-chain "publicSubmissions" flag on a bounty. Requires a
-   personal_sign message from the bounty creator. CIDs on the blockchain /
+   personal_sign message from the bounty creator — an EOA signature or an
+   EIP-1271 smart-wallet signature. CIDs on the blockchain /
    in API responses are public regardless — this flag only controls whether
    the website surfaces convenient preview/download buttons to non-creators.
    =============================== */
@@ -5482,7 +5469,11 @@ router.patch('/:jobId/public-submissions', async (req, res) => {
     const { verifyPublicSubmissionsAction } = require('../utils/messageAuth');
     let parsed;
     try {
-      parsed = verifyPublicSubmissionsAction({
+      // Async: EOA creators verify via ecrecover; smart-wallet creators
+      // (Coinbase Smart Wallet / Base Account / agent CDP wallets) verify via
+      // EIP-1271 isValidSignature on the creator contract. Any verifier
+      // failure — including RPC errors — lands here as a 401, never a 500.
+      parsed = await verifyPublicSubmissionsAction({
         message,
         signature,
         expectedSigner: job.creator,

@@ -52,6 +52,8 @@ npm run deploy:sepolia     # or deploy:base
 
 After deployment, the new BountyEscrow address (and the `BountyEscrowLens` it created) is printed to console and saved to `deployments/`; both are verified on Basescan when `BASESCAN_API_KEY` is set (`ESCROW=<escrow> npx hardhat run deploy/verify.js --network <net>` verifies all three after the fact). The lens is verified separately only so the explorer's read tab can show the views — callers never need its address. Update `BOUNTY_ESCROW_ADDRESS_*` in both `server/.env` and `client/.env`, then restart the server and rebuild the client. If the ABI changed, that is not enough — follow the release's cutover runbook in `../deploy/` (currently `../deploy/CUTOVER-2026-09-12.md`), which also applies the off-chain migration patch, bumps `deploymentBlocks`, and resets the job data.
 
+**Merged ABI for agents.** After any contract change, regenerate and republish the merged escrow+lens ABI that agents load (see `abi/README.md`): `node scripts/build-merged-abi.js`, commit `abi/BountyEscrow.json`, pin it to IPFS, then update the CID in `abi/README.md`, `server/routes/agentRoutes.js` (`ABI_IPFS_CID`) and `client/src/pages/Blockchain.jsx`. Also verify all three contracts on Sourcify (keyless; `deploy/verify.js` covers Basescan only) — Sourcify's `POST /v2/verify/{chainId}/{address}` accepts the Hardhat build-info `input` as `stdJsonInput`.
+
 ## Project context
 
 For deployed contract addresses, see [../README.md#contract-addresses](../README.md#contract-addresses).

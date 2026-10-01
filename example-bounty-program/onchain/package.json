@@ -11,7 +11,9 @@
     "deploy:base": "hardhat compile && hardhat run deploy/01_deploy_bounty.js --network base",
     "verify": "hardhat verify --network base-sepolia",
     "clean": "hardhat clean",
-    "node": "hardhat node"
+    "node": "hardhat node",
+    "compile:offline": "hardhat compile --config hardhat.local.cjs",
+    "test:offline": "hardhat test --config hardhat.local.cjs"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",

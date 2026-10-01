@@ -1,0 +1,1833 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "contract IVerdiktaAggregator",
+        "name": "_verdikta",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [],
+    "name": "FailedDeployment",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "balance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "needed",
+        "type": "uint256"
+      }
+    ],
+    "name": "InsufficientBalance",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amountReturned",
+        "type": "uint256"
+      }
+    ],
+    "name": "BountyClosed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "evaluationCid",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "classId",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "threshold",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "payoutWei",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "submissionDeadline",
+        "type": "uint64"
+      }
+    ],
+    "name": "BountyCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "hunter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amountPaid",
+        "type": "uint256"
+      }
+    ],
+    "name": "CreatorApproved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amountRefunded",
+        "type": "uint256"
+      }
+    ],
+    "name": "CreatorRefunded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "EthRefunded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "PaymentDeferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "winner",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amountWei",
+        "type": "uint256"
+      }
+    ],
+    "name": "PayoutSent",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "RefundDeferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "passed",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "paid",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "acceptance",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "rejection",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "justificationCids",
+        "type": "string"
+      }
+    ],
+    "name": "SubmissionFinalized",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "hunter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "evalWallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "ethMaxBudget",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "evaluationCid",
+        "type": "string"
+      }
+    ],
+    "name": "SubmissionPrepared",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "Withdrawn",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "verdiktaAggId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "WorkSubmitted",
+    "type": "event"
+  },
+  {
+    "stateMutability": "nonpayable",
+    "type": "fallback"
+  },
+  {
+    "inputs": [],
+    "name": "ADDENDUM",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "INLINE_REFUND_GAS_LIMIT",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_ACTIVE_EVALUATIONS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_ALPHA",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_CID_LENGTH",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_FEE_SCALING_FACTOR",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_SUBMISSIONS_PER_BOUNTY",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MIN_CID_LENGTH",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "PAYOUT_GAS_LIMIT",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "SCORE_DIVISOR",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "SCORE_SCALE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "activeEvaluations",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "bounties",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "creator",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "evaluationCid",
+        "type": "string"
+      },
+      {
+        "internalType": "uint64",
+        "name": "requestedClass",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint8",
+        "name": "threshold",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint128",
+        "name": "payoutWei",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint64",
+        "name": "createdAt",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint64",
+        "name": "submissionDeadline",
+        "type": "uint64"
+      },
+      {
+        "internalType": "enum BountyEscrow.BountyStatus",
+        "name": "status",
+        "type": "uint8"
+      },
+      {
+        "internalType": "address",
+        "name": "winner",
+        "type": "address"
+      },
+      {
+        "internalType": "uint64",
+        "name": "submissions",
+        "type": "uint64"
+      },
+      {
+        "internalType": "address",
+        "name": "targetHunter",
+        "type": "address"
+      },
+      {
+        "internalType": "uint128",
+        "name": "creatorDeterminationPayment",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint128",
+        "name": "arbiterDeterminationPayment",
+        "type": "uint128"
+      },
+      {
+        "internalType": "uint64",
+        "name": "creatorAssessmentWindowSize",
+        "type": "uint64"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "maxOracleFee",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "alpha",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "estimatedBaseCost",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxFeeBasedScaling",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct BountyEscrow.OracleParams",
+        "name": "oracle",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "bountyCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "closeExpiredBounty",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "components": [
+          {
+            "internalType": "string",
+            "name": "evaluationCid",
+            "type": "string"
+          },
+          {
+            "internalType": "uint64",
+            "name": "requestedClass",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint8",
+            "name": "threshold",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint64",
+            "name": "submissionDeadline",
+            "type": "uint64"
+          },
+          {
+            "internalType": "address",
+            "name": "targetHunter",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "creatorDeterminationPayment",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "arbiterDeterminationPayment",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint64",
+            "name": "creatorAssessmentWindowSize",
+            "type": "uint64"
+          },
+          {
+            "components": [
+              {
+                "internalType": "uint256",
+                "name": "maxOracleFee",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "alpha",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "estimatedBaseCost",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "maxFeeBasedScaling",
+                "type": "uint256"
+              }
+            ],
+            "internalType": "struct BountyEscrow.OracleParams",
+            "name": "oracle",
+            "type": "tuple"
+          }
+        ],
+        "internalType": "struct BountyEscrow.CreateParams",
+        "name": "p",
+        "type": "tuple"
+      }
+    ],
+    "name": "createBounty",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "creatorApproveSubmission",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "effectiveOracleParams",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "maxOracleFee",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "alpha",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "estimatedBaseCost",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "maxFeeBasedScaling",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct BountyEscrow.OracleParams",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "failTimedOutSubmission",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "finalizeSubmission",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getBounty",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "creator",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "evaluationCid",
+            "type": "string"
+          },
+          {
+            "internalType": "uint64",
+            "name": "requestedClass",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint8",
+            "name": "threshold",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint128",
+            "name": "payoutWei",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint64",
+            "name": "createdAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "submissionDeadline",
+            "type": "uint64"
+          },
+          {
+            "internalType": "enum BountyEscrow.BountyStatus",
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "internalType": "address",
+            "name": "winner",
+            "type": "address"
+          },
+          {
+            "internalType": "uint64",
+            "name": "submissions",
+            "type": "uint64"
+          },
+          {
+            "internalType": "address",
+            "name": "targetHunter",
+            "type": "address"
+          },
+          {
+            "internalType": "uint128",
+            "name": "creatorDeterminationPayment",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint128",
+            "name": "arbiterDeterminationPayment",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint64",
+            "name": "creatorAssessmentWindowSize",
+            "type": "uint64"
+          },
+          {
+            "components": [
+              {
+                "internalType": "uint256",
+                "name": "maxOracleFee",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "alpha",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "estimatedBaseCost",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "maxFeeBasedScaling",
+                "type": "uint256"
+              }
+            ],
+            "internalType": "struct BountyEscrow.OracleParams",
+            "name": "oracle",
+            "type": "tuple"
+          }
+        ],
+        "internalType": "struct BountyEscrow.Bounty",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getSubmission",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "hunter",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "hunterCid",
+            "type": "string"
+          },
+          {
+            "internalType": "address",
+            "name": "evalWallet",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "verdiktaAggId",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "enum BountyEscrow.SubmissionStatus",
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint8",
+            "name": "acceptance",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint8",
+            "name": "rejection",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint64",
+            "name": "submittedAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "finalizedAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint96",
+            "name": "ethMaxBudget",
+            "type": "uint96"
+          },
+          {
+            "internalType": "uint64",
+            "name": "creatorWindowEnd",
+            "type": "uint64"
+          },
+          {
+            "internalType": "address",
+            "name": "funder",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct BountyEscrow.Submission",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "lens",
+    "outputs": [
+      {
+        "internalType": "contract BountyEscrowLens",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes",
+        "name": "data",
+        "type": "bytes"
+      }
+    ],
+    "name": "lensDelegate",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "pendingSubmissionIds",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "evaluationCid",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "hunterCid",
+        "type": "string"
+      }
+    ],
+    "name": "prepareSubmission",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "evalWallet",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ethMaxBudget",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "recoverLeftoverEth",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "requiredPrepay",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "startPreparedSubmission",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "submissionCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "subs",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "hunter",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "hunterCid",
+        "type": "string"
+      },
+      {
+        "internalType": "address",
+        "name": "evalWallet",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "verdiktaAggId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "enum BountyEscrow.SubmissionStatus",
+        "name": "status",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint8",
+        "name": "acceptance",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint8",
+        "name": "rejection",
+        "type": "uint8"
+      },
+      {
+        "internalType": "uint64",
+        "name": "submittedAt",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint64",
+        "name": "finalizedAt",
+        "type": "uint64"
+      },
+      {
+        "internalType": "uint96",
+        "name": "ethMaxBudget",
+        "type": "uint96"
+      },
+      {
+        "internalType": "uint64",
+        "name": "creatorWindowEnd",
+        "type": "uint64"
+      },
+      {
+        "internalType": "address",
+        "name": "funder",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "verdikta",
+    "outputs": [
+      {
+        "internalType": "contract IVerdiktaAggregator",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "walletImplementation",
+    "outputs": [
+      {
+        "internalType": "contract EvaluationWallet",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "withdraw",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "withdrawable",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "stateMutability": "payable",
+    "type": "receive"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_BATCH",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "canBeClosed",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "start",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "count",
+        "type": "uint256"
+      }
+    ],
+    "name": "getBounties",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "creator",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "evaluationCid",
+            "type": "string"
+          },
+          {
+            "internalType": "uint64",
+            "name": "requestedClass",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint8",
+            "name": "threshold",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint128",
+            "name": "payoutWei",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint64",
+            "name": "createdAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "submissionDeadline",
+            "type": "uint64"
+          },
+          {
+            "internalType": "enum BountyEscrow.BountyStatus",
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "internalType": "address",
+            "name": "winner",
+            "type": "address"
+          },
+          {
+            "internalType": "uint64",
+            "name": "submissions",
+            "type": "uint64"
+          },
+          {
+            "internalType": "address",
+            "name": "targetHunter",
+            "type": "address"
+          },
+          {
+            "internalType": "uint128",
+            "name": "creatorDeterminationPayment",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint128",
+            "name": "arbiterDeterminationPayment",
+            "type": "uint128"
+          },
+          {
+            "internalType": "uint64",
+            "name": "creatorAssessmentWindowSize",
+            "type": "uint64"
+          },
+          {
+            "components": [
+              {
+                "internalType": "uint256",
+                "name": "maxOracleFee",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "alpha",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "estimatedBaseCost",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "maxFeeBasedScaling",
+                "type": "uint256"
+              }
+            ],
+            "internalType": "struct BountyEscrow.OracleParams",
+            "name": "oracle",
+            "type": "tuple"
+          }
+        ],
+        "internalType": "struct BountyEscrow.Bounty[]",
+        "name": "out",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getEffectiveBountyStatus",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getOracleResult",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "started",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "hasResult",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "settled",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "failed",
+        "type": "bool"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "scores",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "string",
+        "name": "justificationCids",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "startTimestamp",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getSubmissions",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "hunter",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "hunterCid",
+            "type": "string"
+          },
+          {
+            "internalType": "address",
+            "name": "evalWallet",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "verdiktaAggId",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "enum BountyEscrow.SubmissionStatus",
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint8",
+            "name": "acceptance",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint8",
+            "name": "rejection",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint64",
+            "name": "submittedAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "finalizedAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint96",
+            "name": "ethMaxBudget",
+            "type": "uint96"
+          },
+          {
+            "internalType": "uint64",
+            "name": "creatorWindowEnd",
+            "type": "uint64"
+          },
+          {
+            "internalType": "address",
+            "name": "funder",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct BountyEscrow.Submission[]",
+        "name": "out",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "start",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "count",
+        "type": "uint256"
+      }
+    ],
+    "name": "getSubmissionsPage",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "hunter",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "hunterCid",
+            "type": "string"
+          },
+          {
+            "internalType": "address",
+            "name": "evalWallet",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes32",
+            "name": "verdiktaAggId",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "enum BountyEscrow.SubmissionStatus",
+            "name": "status",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint8",
+            "name": "acceptance",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint8",
+            "name": "rejection",
+            "type": "uint8"
+          },
+          {
+            "internalType": "uint64",
+            "name": "submittedAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint64",
+            "name": "finalizedAt",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint96",
+            "name": "ethMaxBudget",
+            "type": "uint96"
+          },
+          {
+            "internalType": "uint64",
+            "name": "creatorWindowEnd",
+            "type": "uint64"
+          },
+          {
+            "internalType": "address",
+            "name": "funder",
+            "type": "address"
+          }
+        ],
+        "internalType": "struct BountyEscrow.Submission[]",
+        "name": "out",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "isAcceptingSubmissions",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submissionId",
+        "type": "uint256"
+      }
+    ],
+    "name": "nextAction",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "bountyId",
+        "type": "uint256"
+      }
+    ],
+    "name": "prepareCutoff",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

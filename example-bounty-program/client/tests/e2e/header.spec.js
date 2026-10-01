@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.js';
 
 test.describe('mobile header', () => {
   test.use({ viewport: { width: 375, height: 667 } });
@@ -23,7 +23,7 @@ test.describe('mobile header', () => {
   test('drawer closes on route change', async ({ page }) => {
     await page.goto('/');
     await page.locator('.menu-toggle').click();
-    await page.getByRole('link', { name: 'Agents' }).click();
+    await page.locator('#primary-nav').getByRole('link', { name: 'Agents' }).click();
     await page.waitForURL('**/agents');
     await expect(page.locator('.header-collapsible.is-open')).toHaveCount(0);
   });

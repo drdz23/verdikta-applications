@@ -1203,7 +1203,10 @@ class VerdiktaService {
     const slotFor = (aggId, pollIndex, operator) => {
       const ev = evalFor(aggId);
       const pk = pollIndex == null ? '?' : pollIndex.toString();
-      if (!ev.slots[pk]) ev.slots[pk] = { operator: operator || null, committed: false, revealRequested: false, revealed: false };
+      // *Block fields feed the timing panel: commit latency = commitBlock −
+      // requestBlock; reveal latency = revealBlock − revealReqBlock (Base has a
+      // fixed 2s block time, so block deltas convert exactly to seconds).
+      if (!ev.slots[pk]) ev.slots[pk] = { operator: operator || null, committed: false, revealRequested: false, revealed: false, selectedBlock: null, commitBlock: null, revealReqBlock: null, revealBlock: null };
       else if (operator && !ev.slots[pk].operator) ev.slots[pk].operator = operator;
       return ev.slots[pk];
     };
@@ -1280,10 +1283,10 @@ class VerdiktaService {
       switch (p.name) {
         case 'RequestAIEvaluation': { requests++; const o = dayOff(log.blockNumber); if (o >= 0 && o < days) daily[o].requests++; evalFor(p.args.aggRequestId).requestBlock = log.blockNumber; break; }
         case 'FulfillAIEvaluation': { fulfilled++; const o = dayOff(log.blockNumber); if (o >= 0 && o < days) daily[o].fulfilled++; fulfillTxHashes.add(log.transactionHash.toLowerCase()); evalFor(p.args.aggRequestId).fulfilled = true; break; }
-        case 'OracleSelected': bump(p.args.oracle, 'selected'); slotFor(p.args.aggRequestId, p.args.pollIndex, p.args.oracle); break;
-        case 'CommitReceived': bump(p.args.operator, 'commits'); slotFor(p.args.aggRequestId, p.args.pollIndex, p.args.operator).committed = true; commitRevealLogs.push({ kind: 'commit', txHash: log.transactionHash, operator: p.args.operator, blockNumber: log.blockNumber }); break;
-        case 'RevealRequestDispatched': slotFor(p.args.aggRequestId, p.args.pollIndex, null).revealRequested = true; break;
-        case 'NewOracleResponseRecorded': bump(p.args.operator, 'reveals'); slotFor(p.args.aggRequestId, p.args.pollIndex, p.args.operator).revealed = true; commitRevealLogs.push({ kind: 'reveal', txHash: log.transactionHash, operator: p.args.operator, blockNumber: log.blockNumber }); break;
+        case 'OracleSelected': { bump(p.args.oracle, 'selected'); const sl = slotFor(p.args.aggRequestId, p.args.pollIndex, p.args.oracle); if (sl.selectedBlock == null) sl.selectedBlock = log.blockNumber; break; }
+        case 'CommitReceived': { bump(p.args.operator, 'commits'); const sl = slotFor(p.args.aggRequestId, p.args.pollIndex, p.args.operator); sl.committed = true; if (sl.commitBlock == null) sl.commitBlock = log.blockNumber; commitRevealLogs.push({ kind: 'commit', txHash: log.transactionHash, operator: p.args.operator, blockNumber: log.blockNumber }); break; }
+        case 'RevealRequestDispatched': { const sl = slotFor(p.args.aggRequestId, p.args.pollIndex, null); sl.revealRequested = true; if (sl.revealReqBlock == null) sl.revealReqBlock = log.blockNumber; break; }
+        case 'NewOracleResponseRecorded': { bump(p.args.operator, 'reveals'); const sl = slotFor(p.args.aggRequestId, p.args.pollIndex, p.args.operator); sl.revealed = true; if (sl.revealBlock == null) sl.revealBlock = log.blockNumber; commitRevealLogs.push({ kind: 'reveal', txHash: log.transactionHash, operator: p.args.operator, blockNumber: log.blockNumber }); break; }
       }
     }
 
@@ -1344,6 +1347,78 @@ class VerdiktaService {
         }
       }
     }
+
+    // ---- Response timing. Commit time = seconds from the request landing to
+    // the operator's CommitReceived; reveal time = seconds from the slot's
+    // RevealRequestDispatched to its NewOracleResponseRecorded. Both derive
+    // from block deltas (Base: fixed 2s blocks), so no per-event getBlock is
+    // needed. Slots whose anchor event fell before the scan floor are skipped.
+    const BLOCK_SECONDS = 2;
+    const timingByOp = {}; // operatorLower → { operator, commit: number[], reveal: number[] }
+    const timingFor = (operator) => {
+      const k = operator.toLowerCase();
+      if (!timingByOp[k]) timingByOp[k] = { operator: ethers.getAddress(operator), commit: [], reveal: [] };
+      return timingByOp[k];
+    };
+    // Daily buckets (index = days ago, same block-offset bucketing as `daily`)
+    // for the per-day average commit / reveal time series.
+    const timingDaily = Array.from({ length: days }, () => ({ cSum: 0, cN: 0, rSum: 0, rN: 0 }));
+    for (const ev of Object.values(evals)) {
+      for (const sl of Object.values(ev.slots)) {
+        if (!sl.operator) continue;
+        // OracleSelected is emitted in the request tx, so its block is the same
+        // anchor — and it survives when the RequestAIEvaluation log is missing.
+        const anchor = ev.requestBlock != null ? ev.requestBlock : sl.selectedBlock;
+        if (sl.commitBlock != null && anchor != null && sl.commitBlock >= anchor) {
+          const sec = (sl.commitBlock - anchor) * BLOCK_SECONDS;
+          timingFor(sl.operator).commit.push(sec);
+          const o = dayOff(sl.commitBlock);
+          if (o >= 0 && o < days) { timingDaily[o].cSum += sec; timingDaily[o].cN++; }
+        }
+        if (sl.revealBlock != null && sl.revealReqBlock != null && sl.revealBlock >= sl.revealReqBlock) {
+          const sec = (sl.revealBlock - sl.revealReqBlock) * BLOCK_SECONDS;
+          timingFor(sl.operator).reveal.push(sec);
+          const o = dayOff(sl.revealBlock);
+          if (o >= 0 && o < days) { timingDaily[o].rSum += sec; timingDaily[o].rN++; }
+        }
+      }
+    }
+    // Oldest → newest (today last), matching dailyTrend / gasDaily.
+    const timingDailySeries = timingDaily
+      .map((b, i) => ({
+        daysAgo: i,
+        commits: b.cN,
+        reveals: b.rN,
+        avgCommitSec: b.cN ? Math.round((b.cSum / b.cN) * 10) / 10 : null,
+        avgRevealSec: b.rN ? Math.round((b.rSum / b.rN) * 10) / 10 : null,
+      }))
+      .reverse();
+    const summarizeSecs = (arr) => {
+      if (!arr.length) return { count: 0, avgSec: null, minSec: null, maxSec: null, stdDevSec: null };
+      let sum = 0, min = Infinity, max = -Infinity;
+      for (const v of arr) { sum += v; if (v < min) min = v; if (v > max) max = v; }
+      const mean = sum / arr.length;
+      let sq = 0;
+      for (const v of arr) sq += (v - mean) * (v - mean);
+      return {
+        count: arr.length,
+        avgSec: Math.round(mean * 10) / 10,
+        minSec: min,
+        maxSec: max,
+        stdDevSec: Math.round(Math.sqrt(sq / arr.length) * 10) / 10, // population std dev
+      };
+    };
+    const timingOperators = Object.values(timingByOp)
+      .map((t) => ({ operator: t.operator, commit: summarizeSecs(t.commit), reveal: summarizeSecs(t.reveal) }))
+      .sort((a, b) => (b.commit.count + b.reveal.count) - (a.commit.count + a.reveal.count));
+    // Every observation, compact, for the cluster chart: [operatorIndex, kind, seconds]
+    // where kind is 'c' (commit) or 'r' (reveal) and operatorIndex indexes timingOperators.
+    const timingPoints = [];
+    timingOperators.forEach((t, i) => {
+      const raw = timingByOp[t.operator.toLowerCase()];
+      for (const v of raw.commit) timingPoints.push([i, 'c', v]);
+      for (const v of raw.reveal) timingPoints.push([i, 'r', v]);
+    });
 
     // Count currently-registered arbiters (jobId registrations) per operator
     // contract, for context next to the reliability numbers. Independent of the
@@ -1544,6 +1619,15 @@ class VerdiktaService {
       },
       dailyTrend,
       operators,
+      // Response timing (seconds; from block deltas at 2s/block). `operators`
+      // carries avg/min/max per operator, `points` every observation for the
+      // cluster chart as [operatorIndex, 'c'|'r', seconds].
+      timing: {
+        blockSeconds: BLOCK_SECONDS,
+        operators: timingOperators,
+        points: timingPoints,
+        daily: timingDailySeries, // per-day avg commit / reveal seconds, oldest → newest
+      },
       gas: {
         scan: gasSummary,            // receipt-collection/backfill meta
         daily: gasDaily,             // network daily avg gas (commit + reveal) for the trend chart

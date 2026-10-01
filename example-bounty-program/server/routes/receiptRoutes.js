@@ -6,6 +6,8 @@ const path = require('path');
 const fs = require('fs');
 const { config } = require('../config');
 const jobStorage = require('../utils/jobStorage');
+const { bountyAmountWei } = require('../utils/bountyAmounts');
+const { getEthPriceUsd } = require('../utils/ethPrice');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -129,10 +131,10 @@ async function loadReceiptData(jobId, submissionId) {
 
     // IMPORTANT: After payout, contract sets payoutWei to 0 to prevent double-payment
     // So we need to get the original amount from the job record for receipts
-    // Convert job.bountyAmount (ETH) back to wei for consistency
+    // Prefer exact persisted wei; legacy records may only have an ETH display amount.
     const payoutWei = bounty.payoutWei && bounty.payoutWei.toString() !== '0' 
       ? bounty.payoutWei 
-      : ethers.parseEther(String(job.bountyAmount || 0));
+      : bountyAmountWei({ ...job, bountyAmount: job.bountyAmount ?? 0 });
 
     // Create a new bounty object with the corrected payoutWei
     // (ethers Result objects are immutable, so we need to create a new plain object)
@@ -168,17 +170,9 @@ async function loadReceiptData(jobId, submissionId) {
 }
 
 async function fetchEthPrice() {
-  try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
-      { timeout: 5000 }
-    );
-    const data = await response.json();
-    return data?.ethereum?.usd || null;
-  } catch (err) {
-    logger.warn('Failed to fetch ETH price', { error: err.message });
-    return null;
-  }
+  // Shared source/cache with GET /api/jobs/eth-price; a stale last-known price is fine for receipts.
+  const { usd } = await getEthPriceUsd();
+  return usd > 0 ? usd : null;
 }
 
 function formatEthAmount(weiAmount) {

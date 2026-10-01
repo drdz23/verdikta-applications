@@ -3,6 +3,7 @@
  */
 
 const { ethers } = require('ethers');
+const { parseEthAmountWei } = require('./bountyAmounts');
 
 const CID_REGEX = /^Qm[1-9A-HJ-NP-Za-km-z]{44}|b[A-Za-z2-7]{58}|B[A-Z2-7]{58}|z[1-9A-HJ-NP-Za-km-z]{48}|F[0-9A-F]{50}$/i;
 
@@ -96,6 +97,7 @@ function isValidFileSize(size) {
  */
 function validateRubric(rubric) {
   const errors = [];
+  if (!rubric || typeof rubric !== "object") return { valid: false, errors: ["Rubric must be an object"] };
 
   // Note: Threshold is no longer part of the rubric sent to AI nodes
   // It's stored separately and used by the smart contract for pass/fail decisions
@@ -114,6 +116,7 @@ function validateRubric(rubric) {
     let totalWeight = 0;
     const ids = new Set();
     rubric.criteria.forEach((criterion, index) => {
+      if (!criterion || typeof criterion !== "object") { errors.push(`Criterion ${index}: invalid object`); return; }
       const cLabel = criterion.label || criterion.id || 'unknown';
       const cPrefix = `Criterion ${index} ("${cLabel}")`;
 
@@ -130,7 +133,7 @@ function validateRubric(rubric) {
         errors.push(`${cPrefix}: Missing or invalid 'must' field (must be boolean)`);
       }
 
-      if (typeof criterion.weight !== 'number') {
+      if (typeof criterion.weight !== 'number' || !Number.isFinite(criterion.weight)) {
         errors.push(`${cPrefix}: Missing or invalid weight (must be number)`);
       } else if (criterion.weight < 0 || criterion.weight > 1) {
         errors.push(`${cPrefix}: Weight must be between 0 and 1`);
@@ -403,7 +406,63 @@ function extractEvaluationWarnings(content) {
   return [...new Set(out)];
 }
 
+// Mode remains optional for legacy callers. Addresses must be prefixed hex and
+// checksum-valid; a declared TARGETED request never becomes open.
+function validateProcurement(mode, target) {
+  if (mode != null && !['OPEN', 'TARGETED'].includes(mode)) return 'procurementMode must be OPEN or TARGETED';
+  if (target != null && target !== '' && (typeof target !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(target) || !ethers.isAddress(target))) return 'Invalid targetHunter address';
+  if (mode === 'TARGETED' && (!target || target.toLowerCase() === ethers.ZeroAddress)) return 'TARGETED requires a nonzero targetHunter';
+  if (mode === 'OPEN' && target && target.toLowerCase() !== ethers.ZeroAddress) return 'OPEN cannot name a targetHunter';
+  return null;
+}
+
+// Normalize before IPFS/storage writes. Numeric API display stays compatible;
+// exact wei is retained separately for transaction construction and chain sync.
+function normalizeBountyPayments(body) {
+  function amount(value, name) {
+    let wei;
+    try { wei = parseEthAmountWei(value); }
+    catch (error) { throw Object.assign(new Error(`${name}: ${error.message}`), { field: name }); }
+    if (wei <= 0n || wei >= (1n << 128n)) throw Object.assign(new Error(`${name} must be positive and fit the escrow uint128 payment field`), { field: name });
+    return wei;
+  }
+  const bounty = amount(body.bountyAmount, 'bountyAmount');
+  const windowError = message => Object.assign(new Error(message), { code: 'INVALID_BOUNTY_WINDOW' });
+  function seconds(value, hours) {
+    if (!['number', 'string'].includes(typeof value) || String(value).trim() === '') throw windowError('Windows must be numeric');
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) throw windowError('Windows must be finite and nonnegative');
+    const result = hours ? Math.round(numeric * 3600) : numeric;
+    if (!Number.isSafeInteger(result)) throw windowError('Window seconds must be safe integers');
+    return result;
+  }
+  const assessmentHours = body.creatorAssessmentWindowHours ?? 0;
+  const assessmentSeconds = body.creatorAssessmentWindowSeconds;
+  const window = assessmentSeconds != null ? seconds(assessmentSeconds, false) : seconds(assessmentHours, true);
+  const duration = seconds(body.submissionWindowHours ?? 24, true);
+  const hasCreator = body.creatorDeterminationPayment != null;
+  const hasArbiter = body.arbiterDeterminationPayment != null;
+  if ((hasCreator !== hasArbiter) || ((Number(assessmentHours) > 0 || Number(assessmentSeconds) > 0) && !(hasCreator && hasArbiter))) {
+    throw windowError('An assessment window or a split payment requires both creatorDeterminationPayment and arbiterDeterminationPayment');
+  }
+  if (duration <= window + 2 || !Number.isSafeInteger(Math.floor(Date.now() / 1000) + duration)) {
+    throw windowError('Submission window must exceed the creator assessment window by more than 2 seconds');
+  }
+  const creator = amount(body.creatorDeterminationPayment ?? body.bountyAmount, 'creatorDeterminationPayment');
+  const arbiter = amount(body.arbiterDeterminationPayment ?? body.bountyAmount, 'arbiterDeterminationPayment');
+  if (!window && creator !== arbiter) throw new Error('No-window determination payments must be equal');
+  const funded = creator > arbiter ? creator : arbiter;
+  if (!window && bounty !== funded) throw new Error('bountyAmount must equal the determination payment');
+  return {
+    bountyAmount: Number(ethers.formatEther(funded)), bountyAmountWei: funded.toString(),
+    creatorDeterminationPayment: ethers.formatEther(creator), arbiterDeterminationPayment: ethers.formatEther(arbiter),
+    creatorAssessmentWindowSize: window, submissionWindowSeconds: duration
+  };
+}
+
 module.exports = {
+  normalizeBountyPayments,
+  validateProcurement,
   isValidCid,
   extractEvaluationWarnings,
   isValidFileType,

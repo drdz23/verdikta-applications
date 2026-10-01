@@ -11,6 +11,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const logger = require('./logger');
+const { bountyAmountFields } = require('./bountyAmounts');
 const { config } = require('../config');
 
 /**
@@ -20,11 +21,32 @@ const { config } = require('../config');
 function normalizeJobs(jobs) {
   let changed = false;
   for (const j of jobs) {
+    let amounts;
+    try {
+      // Validate before changing this record so a failed migration preserves it.
+      // Legacy numeric records retain their display value until chain sync.
+      if (typeof j.bountyAmount === 'string' || j.bountyAmountWei != null) {
+        amounts = bountyAmountFields(j);
+      }
+    } catch (error) {
+      logger.warn('Skipping job normalization due to invalid bounty amount', {
+        jobId: j.jobId,
+        error: error.message,
+      });
+      continue;
+    }
     // Normalize status to UPPERCASE
     const uc = String(j.status).toUpperCase();
     if (j.status !== uc) {
       j.status = uc;
       changed = true;
+    }
+    // Heal records created by review builds without losing their exact amount.
+    if (amounts) {
+      if (j.bountyAmount !== amounts.bountyAmount || j.bountyAmountWei !== amounts.bountyAmountWei) {
+        Object.assign(j, amounts);
+        changed = true;
+      }
     }
     // Migrate primaryCid -> evaluationCid
     if (j.primaryCid) {
