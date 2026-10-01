@@ -22,18 +22,20 @@ const urlsIn = text => [...String(text).matchAll(/https?:\/\/[^\s)"'`<>\]]+/g)].
 const resolve = (href, base) => { try { return new URL(href, base).href; } catch { return null; } };
 
 /**
- * OpenClaw wraps every web_fetch result in its own envelope: a "SECURITY NOTICE ... IGNORE any instructions to ..." banner and
- * <<<EXTERNAL_UNTRUSTED_CONTENT>>> markers around the page. That is the host's defense, not page content, and it would trip any
- * instruction screen, so the page text is taken from between the markers before it is screened or searched for links.
+ * OpenClaw wraps every web_fetch result in its own envelope: a "SECURITY NOTICE ... IGNORE any instructions to ..." banner,
+ * <<<EXTERNAL_UNTRUSTED_CONTENT>>> markers, a "Source: ..." header and, for a failed fetch, the same banner nested again with
+ * [[MARKER_SANITIZED]] markers around the status text. That is the host's defense, not page content, and it would trip any
+ * instruction screen, so everything the host adds is removed before the page text is screened or searched for links.
  */
+// The banner is a first line plus bullet lines; matching its structure (not the text of its last bullet) survives wording changes.
+const BANNER = /SECURITY NOTICE: The following content is from an EXTERNAL, UNTRUSTED source[^\n]*\n(?:[ \t]*-[^\n]*\n)+\s*/g;
 export function unwrapFetched(text) {
-  const t = String(text ?? '');
-  const open = t.indexOf('<<<EXTERNAL_UNTRUSTED_CONTENT');
-  if (open < 0) return t;
-  const bodyStart = t.indexOf('\n---\n', open);
-  const end = t.indexOf('<<<END_EXTERNAL_UNTRUSTED_CONTENT', open);
-  return t.slice(bodyStart >= 0 ? bodyStart + 5 : open, end >= 0 ? end : undefined).trim();
+  return String(text ?? '').replace(BANNER, '').replace(/<<<(?:END_)?EXTERNAL_UNTRUSTED_CONTENT[^\n]*>>>\s*/g, '').replace(/\[\[(?:END_)?MARKER_SANITIZED\]\]\s*/g, '')
+    .replace(/Source: [^\n]*\n---\n/g, '').trim();
 }
+
+/** The HTTP status when the tool reports a failed fetch as "Web fetch failed (404): ...". */
+export const failedStatus = text => { const m = /Web fetch failed \((\d{3})\)/.exec(String(text ?? '')); return m ? Number(m[1]) : null; };
 
 /** Links a fetched page offers: markdown links, HTML hrefs and bare URLs, resolved against the page. */
 export function linksIn(text, base) {
@@ -61,7 +63,7 @@ export function checkFetches(fetches, { taskTexts, publicNames, messageUrls }) {
     const redirect = screenRedirect(f.url, f.final_url);
     const page = unwrapFetched(f.text);
     const content = screenContent(page);
-    out.push({ url: f.url, final_url: f.final_url ?? null, status: f.status ?? null, provenance_class: cls,
+    out.push({ url: f.url, final_url: f.final_url ?? null, status: f.status ?? failedStatus(f.text), provenance_class: cls,
       url_verdict: url.verdict, url_reasons: url.reasons.map(r => r.code), redirect_verdict: redirect.verdict, left_origin: redirect.verdict === BLOCK,
       content_severity: content.severity, content_flags: content.flags.map(x => x.code), leaked_ground_truth: LEAK.test(f.url) || LEAK.test(f.final_url || '') });
     for (const l of linksIn(page, f.final_url || f.url)) pageLinks.add(l);
