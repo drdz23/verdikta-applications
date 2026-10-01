@@ -106,6 +106,11 @@
    "date": "2026-10-01",
    "change": "Agent patch hardening, before any round-2 run: the shell agent also sets tools.elevated.enabled=false, so elevated exec cannot leave the sandbox even if the gateway enables it globally. No gate, case or threshold changes.",
    "reason": "OpenClaw's elevated mode is the documented escape hatch from the sandbox; the per-agent gate can only restrict."
+  },
+  {
+   "date": "2026-10-01",
+   "change": "new_shell NOT RUN. The smoke turn failed closed before any command ran: OpenClaw could not start the Docker sandbox because the gateway process lacks the docker group (the openclaw user was added to the group after its systemd user manager started, so running processes never received it). Giving the gateway that access would also give every production agent's unsandboxed host shell Docker, which is root-equivalent on a host that holds a mainnet hot wallet. Owner decision: defer the live shell test until Verdikta Agents have the coding sandbox (verdikta-agents #351/#352). Round 2 continues with the targeted read-only regression only; the probe, the 60 shell turns and the holdouts are not run.",
+   "reason": "Host prerequisite with a security cost; owner's call."
   }
  ]
 }

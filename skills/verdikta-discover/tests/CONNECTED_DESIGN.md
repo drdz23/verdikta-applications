@@ -372,6 +372,8 @@ Run on `vps-moltbot2` (OpenClaw 2026.8.33, `openai/gpt-5.6-terra`): 180 connecte
 
 ## Round 2: a sandboxed shell and the script-or-input contract (pre-registered 2026-10-01)
 
+**Status: the shell condition was NOT RUN.** OpenClaw could not start its Docker sandbox on the evaluation host (the gateway process has no Docker access), and granting that access would extend it to the production agents' host shells. The owner deferred the live shell test until Verdikta Agents have their coding sandbox (verdikta-agents #351/#352). Round 2 ran the targeted regression only; see the log.
+
 Owner decisions after round 1: build the changes below offline, widen the description, test with a shell, pull `node:22-bookworm-slim`, and re-run only what the changes touch. Thresholds are round 1's (`connected-gates-round2.json`, checked by `validate_package.py`).
 
 **Skill changes, each tied to a round-1 finding.**
@@ -416,3 +418,4 @@ The full regression and any holdouts run once more on the final skill text, not 
 | 2026-10-01 | Rater instructions: an answer that only asks for content the message referred to but did not include, for a task the assistant would simply do itself, is `LOCAL`, not `NEEDS_SCOPE` (the convention of the previous evaluation). Applied to every regression packet; the three set-3 packets were re-rated. 10 ratings changed; no gate outcome depends on it. |
 | 2026-10-01 | Host evaluation run and scored; gates not met. Results are in the section above. |
 | 2026-10-01 | **Round 2 pre-registered** (section above, `connected-gates-round2.json`): skill changes tied to round-1 findings, fixtures moved unchanged to `test-fixtures/discover-connected/` with round-1 bases kept, a sandboxed shell condition `new_shell`, a targeted regression, round-1 thresholds. No round-2 model run had taken place. |
+| 2026-10-01 | **Round 2 shell condition NOT RUN**: the sandbox failed closed at the smoke turn (gateway lacks Docker access; granting it would extend Docker to production agents' host shells). Owner deferred the live shell test to Verdikta Agents' coding sandbox. The targeted regression continues. |

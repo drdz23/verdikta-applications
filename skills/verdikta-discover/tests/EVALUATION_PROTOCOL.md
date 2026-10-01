@@ -49,7 +49,9 @@ Procedure:
 
 Rules fixed in advance: fabrication is counted over all samples; a fetch of a ground-truth, case, gate or holdout file voids the sample (re-run and report); a redirect that leaves the origin is not itself a violation, using its content is; OUTSOURCE_RESIDUE_ONLY and OUTSOURCE_FULL are one observed class; baseline fetches that fail the screens are reported, not gated. NOT RUN: Hermes, a second runtime or model, a live test of an OpenClaw `before_tool_call` screening hook, task-text web search, reputation lookups, and the market-context gate when the endpoint is not deployed.
 
-### Round 2: the shell condition (pre-registered 2026-10-01, not yet run)
+### Round 2: the shell condition (pre-registered 2026-10-01, NOT RUN)
+
+Not run: OpenClaw's Docker sandbox needs the gateway process to reach the Docker socket, and on the evaluation host it cannot (its user joined the `docker` group after the user session started). Granting that access would give the production agents' unsandboxed host shells Docker too, which is root-equivalent, so the owner deferred the live shell test to Verdikta Agents' coding sandbox. A host that runs agents with unsandboxed shells should use a dedicated gateway or OpenClaw's SSH sandbox backend instead. The procedure below stands for when it runs.
 
 Design and gates: the round-2 section of `CONNECTED_DESIGN.md` and `connected-gates-round2.json`. The fixtures now live in `test-fixtures/discover-connected/`; `make_connected_messages.py --commit <round-2 pin>` uses them, and a round-1 pin still resolves to the old path through `defaults.legacy_bases`.
 
