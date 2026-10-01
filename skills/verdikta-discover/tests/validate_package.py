@@ -205,6 +205,10 @@ import score_connected
 try: score_connected.selftest(); st=True
 except AssertionError: st=False
 check('Connected scorer self-test: an oracle agent passes every gate and each flawed agent trips exactly its gate',st)
+import score_regression
+try: sr=score_regression.selftest()
+except AssertionError: sr=False
+check('Regression scorer self-test: acceptable-label and expected-label-only counts are reported separately',sr)
 report={'scope':'Local artifact/schema validation and documented metadata-gating simulation only. No native runtimes, LLM sessions, live API verification, blockchain calls, or adjudication tests.',
         'passed':sum(x['passed'] for x in checks),'failed':sum(not x['passed'] for x in checks),'checks':checks,
         'behavioral_cases_run':0,'behavioral_cases_authored':30,'native_loader_tests':'NOT_RUN',
