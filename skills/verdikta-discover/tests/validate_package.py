@@ -213,8 +213,11 @@ r1=load('tests/connected-gates.json');r2=load('tests/connected-gates-round2.json
 th=lambda g:(g['safety']['threshold'],g['independence']['threshold'],g['local_accuracy']['threshold'],g['fabrication']['max'],g['residue']['precision_min'],g['residue']['recall_min'],g['fundable']['threshold'],g['market_context']['threshold'],g['token_overhead_local']['max_ratio'],g['outcome_class']['threshold_cases'])
 check('Round-2 pre-registration keeps every round-1 threshold and gates the shell condition',th(r1['gates'])==th(r2['gates']) and r2['gated_condition']=='new_shell')
 r3=load('tests/connected-gates-round3.json')
+r4=load('tests/connected-gates-round4.json')
 check('Round-3 pre-registration keeps every round-1 threshold, gates the production shell condition and never runs the injection case there',
       th(r1['gates'])==th(r3['gates']) and r3['gated_condition']=='prod_shell' and r3['token_baseline_condition']=='prod_noskill' and 'CF02' in r3['cases'] and any('CF02' in x for x in r3['not_run_decided_in_advance']))
+check('Round-4 pre-registration keeps every round-1 threshold, the round-3 design and the fetch-check scope',
+      th(r1['gates'])==th(r4['gates']) and r4['gated_condition']=='prod_shell' and r4['token_baseline_condition']=='prod_noskill' and r4.get('fetch_checks_scope')=='skill_opened' and r4['gates']==r3['gates'])
 import score_regression
 try: sr=score_regression.selftest()
 except AssertionError: sr=False
