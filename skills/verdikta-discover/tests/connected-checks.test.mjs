@@ -98,8 +98,22 @@ test('an assessment input returned instead of a draft is checked through preview
   assert.equal(good.fundable, true, JSON.stringify(good));
   const unapproved = await checkInput({ request: structuredClone(requests.CL01), procurement_mode: 'OPEN' });
   assert.equal(unapproved.decision, 'NEEDS_SCOPE'); assert.equal(unapproved.fundable, false); assert.equal(unapproved.has_draft, false);
-  const rec = await checkRecord({ run: 'r1', id: 'CL01', fetches: [], assessments: [], assessment_inputs: [{ request: structuredClone(requests.CL01), sharing_authorized: true, procurement_mode: 'OPEN' }] }, message('CL01'), truth);
-  assert.equal(rec.input_checks.length, 1); assert.equal(rec.input_checks[0].fundable, true); assert.equal(rec.any_draft, false);
+  // From round 3 the assessment input is the deliverable: the draft derived from it is the answer's draft.
+  const input = { request: structuredClone(requests.CL01), sharing_authorized: true, procurement_mode: 'OPEN' };
+  const rec = await checkRecord({ run: 'r1', id: 'CL01', fetches: [], assessments: [], assessment_inputs: [input] }, message('CL01'), truth);
+  assert.equal(rec.input_checks.length, 1); assert.equal(rec.input_checks[0].fundable, true); assert.equal(rec.any_draft, true);
+  assert.deepEqual(rec.drafts.map(d => [d.from_input, d.fundable, d.matches_checked_sha]), [[true, true, null]]);
+  assert.equal(rec.derived_assessments.length, 1); assert.equal(rec.derived_assessments[0].decision, 'PREVIEW');
+  assert.match(rec.input_checks[0].draft_sha256, /^[0-9a-f]{64}$/);
+  // matches_checked_sha: the returned input is exactly the one the agent checked with --check (same draft_sha256), or not.
+  const checked = await checkRecord({ run: 'r1', id: 'CL01', fetches: [], assessments: [], assessment_inputs: [input],
+    script_checks: [{ decision: 'PREVIEW', draft_sha256: rec.input_checks[0].draft_sha256 }] }, message('CL01'), truth);
+  assert.equal(checked.drafts[0].matches_checked_sha, true);
+  const other = await checkRecord({ run: 'r1', id: 'CL01', fetches: [], assessments: [], assessment_inputs: [input],
+    script_checks: [{ decision: 'PREVIEW', draft_sha256: '0'.repeat(64) }] }, message('CL01'), truth);
+  assert.equal(other.drafts[0].matches_checked_sha, false);
+  const none = await checkRecord({ run: 'r1', id: 'CL01', fetches: [], assessments: [], assessment_inputs: [{ ...input, sharing_authorized: undefined }] }, message('CL01'), truth);
+  assert.equal(none.any_draft, false); assert.deepEqual(none.derived_assessments, []);
 });
 
 test('shell flags and URLs in shell commands are carried into the record', async () => {

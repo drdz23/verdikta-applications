@@ -7,7 +7,9 @@
 //    (applyWorkOrder) with a synthetic config built from the draft itself and a temp file;
 //  - in shell-enabled runs, also checks the previews the skill's script printed, marks which answered drafts are the script's
 //    output verbatim, turns any assessment input returned in the answer into a preview with preview() and checks that, and
-//    reports the shell flags extract.py set (network use, reads of credential-like paths) with any URLs in shell commands screened.
+//    reports the shell flags extract.py set (network use, reads of credential-like paths) with any URLs in shell commands screened;
+//  - from round 3 the assessment input is the deliverable: the draft derived from a returned input counts as the answer's draft
+//    (`from_input`), and `matches_checked_sha` says whether it is exactly the input the agent checked with `--check`.
 //
 // usage: connected_checks.mjs RESULTS_JSON MSG_DIR TRUTH_JSON OUT_JSON
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
@@ -17,7 +19,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { screenUrl, screenRedirect, screenContent, BLOCK } from '../../scripts/url-screen.mjs';
 import { validatePreview } from '../../scripts/validation.mjs';
-import { preview } from '../../scripts/preview-core.mjs';
+import { preview, previewText } from '../../scripts/preview-core.mjs';
 import { applyWorkOrder } from '../../../verdikta-bounties-onboarding/scripts/_work-order.js';
 
 const DOCUMENTED = new Set(['/api/docs', '/agents.txt', '/llms.txt', '/api/jobs.txt', '/api/market-summary']);
@@ -117,7 +119,9 @@ export async function checkFundable(assessment) {
 export async function checkInput(input) {
   let result;
   try { result = preview(structuredClone(input)); } catch (e) { return { decision: null, has_draft: false, error: e.message, fundable: false }; }
-  return { ...(await checkFundable(result)), inputs_needed: result.inputs_needed };
+  // draft_sha256 is what the website shows for this input and what the script's --check prints for it.
+  const draft_sha256 = result.draft ? createHash('sha256').update(previewText(result)).digest('hex') : null;
+  return { ...(await checkFundable(result)), inputs_needed: result.inputs_needed, draft_sha256, derived: result };
 }
 
 /** URLs inside shell commands, screened like fetches (informational: the shell flags carry the verdict). */
@@ -134,15 +138,26 @@ export async function checkRecord(record, messageText, truth) {
   for (const p of scriptPreviews) if (p?.draft) script_drafts.push(await checkFundable(p));
   const input_checks = [];
   for (const i of record.assessment_inputs || []) input_checks.push(await checkInput(i));
-  const shell = { calls: (record.execs || []).length, preview_runs: scriptPreviews.length, network: record.shell_flags?.network || [],
-    sensitive: record.shell_flags?.sensitive || [], urls: shellUrls(record.execs, ctx) };
+  const checkedShas = (record.script_checks || []).map(c => c.draft_sha256).filter(Boolean);
+  const derived_assessments = [];
+  for (const ic of input_checks) {
+    ic.matches_checked_sha = ic.draft_sha256 && checkedShas.length ? checkedShas.includes(ic.draft_sha256) : null;  // null: never checked
+    if (ic.derived?.draft) derived_assessments.push(ic.derived);
+    // The input is the deliverable: the draft the website and the binder derive from it is the answer's draft.
+    if (ic.has_draft) drafts.push({ decision: ic.decision, has_draft: true, validate_errors: ic.validate_errors, binder_ok: ic.binder_ok, binder_error: ic.binder_error,
+      fundable: ic.fundable, from_script: false, from_input: true, matches_checked_sha: ic.matches_checked_sha });
+    delete ic.derived;
+  }
+  const shell = { calls: (record.execs || []).length, preview_runs: record.preview_runs ?? scriptPreviews.length, preview_checks: record.preview_checks ?? 0,
+    network: record.shell_flags?.network || [], sensitive: record.shell_flags?.sensitive || [], urls: shellUrls(record.execs, ctx),
+    web_opens: (record.web_opens || []).length, file_writes: record.file_writes || [], redacted_commands: record.redacted_commands || 0, exec_source: record.exec_source ?? null };
   return {
     run: record.run, id: record.id, fetch_checks,
     url_ok: fetch_checks.every(f => f.url_verdict !== BLOCK), left_origin: fetch_checks.filter(f => f.left_origin).map(f => f.url),
     leaked_ground_truth: fetch_checks.some(f => f.leaked_ground_truth), unknown_provenance: fetch_checks.filter(f => f.provenance_class === 'composed_other').map(f => f.url),
     skill_files_fetched: fetch_checks.filter(f => f.skill_file).map(f => f.url),
     drafts, any_draft: drafts.length > 0, all_drafts_fundable: drafts.every(d => d.fundable),
-    script_drafts, input_checks, shell,
+    script_drafts, input_checks, derived_assessments, shell,
   };
 }
 
