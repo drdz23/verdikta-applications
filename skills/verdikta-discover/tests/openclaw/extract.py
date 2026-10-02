@@ -103,8 +103,18 @@ def assessments_in(text):
 
 
 def checks_in(text):
-    """--check summaries printed by the preview script: objects with a decision and a draft_sha256 key."""
-    return [j for j in json_objects(text) if 'decision' in j and 'draft_sha256' in j]
+    """--check summaries printed by the preview script: objects with a decision and a draft_sha256 key, also when a code-mode
+    script wrapped the output as a JSON string inside another object ({"check": "{\\n  \\"decision\\": ..."})."""
+    found, queue = [], list(json_objects(text))
+    while queue:
+        j = queue.pop(0)
+        if 'decision' in j and 'draft_sha256' in j: found.append(j); continue
+        for v in j.values():
+            if isinstance(v, str) and v.lstrip().startswith('{'):
+                queue.extend(json_objects(v))
+            elif isinstance(v, dict):
+                queue.append(v)
+    return found
 
 
 def json_objects(text):

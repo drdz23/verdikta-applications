@@ -104,6 +104,9 @@ test('with a Codex rollout, shell calls come unredacted from Codex\'s log, and -
   assert.equal(rec.execs[0].command, heredoc);
   assert.equal(rec.preview_runs, 1); assert.equal(rec.preview_checks, 1);
   assert.equal(rec.script_checks.length, 1); assert.equal(rec.script_checks[0].draft_sha256, JSON.parse(summary).draft_sha256);
+  // A code-mode script may wrap the output as a JSON string inside another object; the summary is still read.
+  const wrappedRec = await runExtract(events, 'Decision: PREVIEW', 'read,web_fetch,bash', { ...codex, scripts: [{ ...codex.scripts[0], output: 'Output:\n' + JSON.stringify({ check: summary }) }] });
+  assert.equal(wrappedRec.script_checks.length, 1); assert.equal(wrappedRec.script_checks[0].draft_sha256, JSON.parse(summary).draft_sha256);
   assert.deepEqual(rec.web_opens.map(w => w.refs), [['https://example.org/a']]);
   assert.deepEqual(rec.file_writes, ['notes.json', '/tmp/x.json']);
   assert.equal(rec.assessment_inputs.length, 1);
