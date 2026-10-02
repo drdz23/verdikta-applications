@@ -79,3 +79,21 @@ test('migration changes nothing when the stored password does not unlock the key
   assert.equal(r3.status, 1);
   assert.match(r3.stderr, /outside the skill directory/);
 });
+
+test('a configured secrets directory with ~ resolves under the home directory', async () => {
+  const { defaultSecretsDir } = await import('../_paths.js');
+  const saved = process.env.VERDIKTA_SECRETS_DIR;
+  try {
+    process.env.VERDIKTA_SECRETS_DIR = '~/.config/verdikta-bounties';
+    assert.equal(defaultSecretsDir(), `${(await import('node:os')).homedir()}/.config/verdikta-bounties`);
+  } finally {
+    if (saved === undefined) delete process.env.VERDIKTA_SECRETS_DIR; else process.env.VERDIKTA_SECRETS_DIR = saved;
+  }
+});
+
+test('migration finds the stable .env when VERDIKTA_SECRETS_DIR is written with ~', async t => {
+  const { dir, config } = await home(t, ['VERDIKTA_SECRETS_DIR=~/.config/verdikta-bounties', 'VERDIKTA_WALLET_PASSWORD=pw-123'], 'pw-123');
+  const r = run(dir, ['onboard.js', '--migrate-password', '--to-file', `${dir}/secrets/pw`]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(await readFile(`${config}/.env`, 'utf8'), /VERDIKTA_WALLET_PASSWORD/);
+});
