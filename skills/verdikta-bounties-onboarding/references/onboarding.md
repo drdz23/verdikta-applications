@@ -4,7 +4,7 @@ Use a fresh low-balance wallet. Owner approval of setup does not authorize a bou
 
 ## Guided setup
 
-Run `node onboard.js` in a human-controlled terminal. Select the network explicitly, confirm its API origin, and choose wallet creation or import. The wizard stores the encrypted keystore/password configuration locally, waits for owner funding in ETH, registers the API identity, and optionally lists jobs. Private keys and passwords must not enter agent messages or logs. Import only a separately approved low-balance wallet; never overwrite an existing wallet without approval.
+Run `node onboard.js` in a human-controlled terminal. Select the network explicitly and choose wallet creation or import; the API origin follows from the network. The wizard writes the encrypted keystore and non-secret configuration locally, never the wallet password. It waits for owner funding in ETH, registers the API identity, and prints the command for a read-only job listing. Private keys and passwords must not enter agent messages or logs. Import only a separately approved low-balance wallet; never overwrite an existing wallet without approval.
 
 ## Individual helpers
 
@@ -23,13 +23,31 @@ Scripts use exported variables and `~/.config/verdikta-bounties/.env`; they igno
 | Variable | Use |
 | --- | --- |
 | VERDIKTA_NETWORK | Required explicit `base` or `base-sepolia`; no transaction mainnet default |
-| VERDIKTA_BOUNTIES_BASE_URL | Matching reviewed origin: https://bounties.verdikta.org or https://bounties-testnet.verdikta.org |
+| VERDIKTA_BOUNTIES_BASE_URL | Optional. Only the network's reviewed origin is accepted (https://bounties.verdikta.org or https://bounties-testnet.verdikta.org); unset means that origin |
 | VERDIKTA_KEYSTORE_PATH | Encrypted wallet file |
-| VERDIKTA_WALLET_PASSWORD | Local keystore decryption credential |
+| VERDIKTA_WALLET_PASSWORD | Keystore password. Process environment or terminal prompt only; never read from `.env`. See below |
 | VERDIKTA_BOT_FILE | API identity file; stable configuration directory default |
 | VERDIKTA_SPEND_POLICY | Owner-approved per-run value/gas cap file; required for every transaction |
 | BASE_RPC_URL / BASE_SEPOLIA_RPC_URL | Optional reviewed RPC; deployment/chain/code checks still apply |
 | VERDIKTA_SECRETS_DIR | Optional stable configuration directory used by setup helpers |
+
+## Wallet password
+
+The skill never stores the keystore password, and no script reads it from a file. Each signing script takes `VERDIKTA_WALLET_PASSWORD` from its environment, or asks for it in a human-controlled terminal without echoing it. A stable `.env` that still contains it makes every script stop until it is migrated ([1.6.0 notes](migration-1.6.0.md)).
+
+For unattended agent runs, keep the password in a secret store and let the runtime inject it:
+
+- OpenClaw: the skill declares `VERDIKTA_WALLET_PASSWORD` as its `primaryEnv`, so set `skills.entries.verdikta-bounties-onboarding.apiKey` to a SecretRef. OpenClaw resolves it and sets the variable for the agent's host runs only. Use an `exec` provider for a password manager (OpenClaw's secrets documentation covers 1Password, Bitwarden, Vault, `pass` and `sops`), or a `file` provider for a mode-600 file outside this configuration directory:
+
+  ```json5
+  secrets: { providers: { verdikta_wallet: { source: "file", path: "/home/you/.config/verdikta-secrets/wallet-password", mode: "singleValue" } } },
+  skills: { entries: { "verdikta-bounties-onboarding": { apiKey: { source: "file", provider: "verdikta_wallet", id: "value" } } } }
+  ```
+
+  Then run `openclaw secrets audit --check`.
+- Other runtimes: export the variable from your secret manager for the process that runs the scripts.
+
+Limits to keep in mind: during a run the password is in the agent process's environment, so this keeps it off disk and out of configuration files; it does not isolate it from the agent. A file provider still holds the password in plaintext, outside the skill's own files. Keep the wallet balance low and the spend policy tight; for real isolation, run the signing scripts under a separate OS account that the agent cannot read.
 
 ## Endpoint map
 
