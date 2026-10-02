@@ -110,7 +110,7 @@ globalThis.fetch=deny;syncBuiltinESMExports();`);
 });
 test('metadata has no gate; preview graph excludes executor',async()=>{
   const skill=await readFile(new URL('SKILL.md',root),'utf8');assert.doesNotMatch(skill.split('---')[1],/requires|primaryEnv|always:|VERDIKTA_/);
-  for(const file of ['scripts/preview-core.mjs','scripts/validation.mjs','scripts/preview.mjs','scripts/address.mjs']) {
+  for(const file of ['scripts/preview-core.mjs','scripts/validation.mjs','scripts/preview.mjs','scripts/address.mjs','scripts/url-screen.mjs','scripts/screen.mjs']) {
     const text=await readFile(new URL(file,root),'utf8');assert.doesNotMatch(text,/from ['"].*(?:_lib|_env|ethers|viem|_executor|_transaction|(?:node:)?(?:https|http|net|dgram|dns|tls|http2|child_process))['"]|process(?:\.env|\[['"]env['"]\])|fetch\(|import\s*\(/);
   }
 });

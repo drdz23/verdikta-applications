@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Settings,
   ChevronDown,
+  Upload,
 } from 'lucide-react';
 import { ethers } from 'ethers';
 import { useToast } from '../components/Toast';
@@ -100,6 +101,13 @@ function CreateBounty({ walletState }) {
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [showLibrary, setShowLibrary] = useState(false);
   const [loadedRubricCid, setLoadedRubricCid] = useState(null);
+
+  // Import of a downloaded work-order draft (verdikta-discover). The checking module is loaded lazily on first use
+  // because it brings in AJV. Importing sends nothing: the owner still reviews, picks the jury and signs.
+  const [imported, setImported] = useState(null);
+  const [importErrors, setImportErrors] = useState([]);
+  const [importPaste, setImportPaste] = useState('');
+  const [importApi, setImportApi] = useState(null);
 
   // Form state (basic info)
   const [formData, setFormData] = useState({
@@ -672,12 +680,81 @@ function CreateBounty({ walletState }) {
   };
 
   // ---------- submit (create bounty) ----------
+  // ---------- work-order draft import ----------
+  const applyImportBytes = async (bytes) => {
+    setImportErrors([]);
+    try {
+      const api = importApi || (await import('../utils/workOrderImport.js'));
+      setImportApi(api);
+      const result = api.inspectDraftBytes(bytes);
+      if (!result.ok) { setImportErrors(result.errors); return; }
+      const patch = api.draftToFormPatch(result);
+      setImported({ ...result, patch });
+      setRubric({ version: RUBRIC_DEFAULTS.version, ...patch.rubric });
+      setThreshold(patch.threshold);
+      setLoadedRubricCid(null);
+      setSelectedTemplate('');
+      setFormData((prev) => ({
+        ...prev,
+        targetHunter: patch.targetHunter,
+        title: prev.title.trim() ? prev.title : patch.suggestedTitle,
+        description: prev.description.trim() ? prev.description : patch.baseDescription,
+      }));
+      toast.success('Work-order draft imported. Nothing has been submitted: review every field and choose your jury.');
+    } catch (err) {
+      setImportErrors([`Could not check the draft: ${err?.message || err}`]);
+    }
+  };
+  const handleDraftFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 256 * 1024) { setImportErrors(['The draft is larger than 256 KB']); return; }
+    await applyImportBytes(new Uint8Array(await file.arrayBuffer()));
+  };
+  const handleDraftPaste = () => applyImportBytes(new TextEncoder().encode(importPaste));
+  const restoreDraftValues = () => {
+    if (!imported) return;
+    setRubric({ version: RUBRIC_DEFAULTS.version, ...imported.patch.rubric });
+    setThreshold(imported.patch.threshold);
+    setLoadedRubricCid(null);
+    setFormData((prev) => ({ ...prev, targetHunter: imported.patch.targetHunter }));
+  };
+  const removeImport = () => { setImported(null); setImportErrors([]); setImportPaste(''); };
+  // A draft derived from an agent's assessment input can be saved, so the onboarding skill gets exactly these bytes.
+  const downloadDerivedDraft = () => {
+    if (!imported?.previewText) return;
+    const url = URL.createObjectURL(new Blob([imported.previewText], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = `work-order-draft-${imported.summary.task_id}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  // What no longer matches the imported draft. A targeted draft never silently becomes open, and an open one never gains a target.
+  const divergence = imported && importApi
+    ? importApi.draftDivergence(imported.draft, { rubric: buildRubricForUpload(), threshold, targetHunter: formData.targetHunter })
+    : [];
+  const networkWarning = Boolean(imported && importApi && importApi.networkMismatch(imported.summary.network, config.network));
+  let importedBlock = '', importedBlockError = '';
+  if (imported && importApi) {
+    try { importedBlock = importApi.composeImportedDescription(imported, formData.description).description.slice(formData.description.length); }
+    catch (err) { importedBlockError = err.message; }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!walletState.isConnected) { toast.warning('Please connect your wallet first'); return; }
     if (!formData.title.trim()) { toast.warning('Please enter a job title'); return; }
     if (!formData.description.trim()) { toast.warning('Please enter a job description'); return; }
+    if (imported && divergence.length) {
+      toast.warning(`The ${divergence.join(', ')} no longer match the imported work-order draft. Restore the draft values or remove the import.`);
+      return;
+    }
+    if (imported && importedBlockError) { toast.warning(importedBlockError); return; }
+    // With an imported draft the description is the owner's words plus the committed work-order block.
+    const evaluationDescription = imported && importApi ? importApi.composeImportedDescription(imported, formData.description).description : formData.description;
     // Windowed bounties are funded with max(creator, arbiter) payment; the
     // payout field is hidden in that mode and this derived value is what gets
     // displayed, priced in USD, sent to the API and escrowed on-chain.
@@ -743,7 +820,7 @@ function CreateBounty({ walletState }) {
 
       const apiResponse = await apiService.createJob({
         title: formData.title,
-        description: formData.description,
+        description: evaluationDescription,
         workProductType: formData.workProductType,
         creator: walletState.address,
         bountyAmount: bountyAmountEth,
@@ -907,6 +984,86 @@ function CreateBounty({ walletState }) {
           <div className="form-step">
             <h2>Basic Information</h2>
 
+            <section className="work-order-import" aria-labelledby="work-order-import-title">
+              <h3 id="work-order-import-title"><Upload size={16} className="inline-icon" /> Import a work-order draft (optional)</h3>
+              {!imported && (
+                <>
+                  <p>
+                    Have a draft from an agent or the <a href="/agents#buyer-preview">buyer preview</a>? Import the downloaded <code>.json</code>, or paste the
+                    assessment input an agent returned, to prefill the request, rubric, threshold and supplier choice. It is checked in your browser with the
+                    same code the onboarding skill uses, and an assessment input is turned into its draft there too.
+                    Nothing is sent or submitted: you still review every field, choose the jury and sign with your own wallet.
+                  </p>
+                  <label className="work-order-file">Draft file
+                    <input type="file" accept=".json,application/json" onChange={handleDraftFile} aria-label="Work-order draft file" />
+                  </label>
+                  <label>Or paste the draft or assessment input JSON
+                    <textarea rows={4} value={importPaste} onChange={(e) => setImportPaste(e.target.value)} spellCheck={false} aria-label="Work-order draft JSON" />
+                  </label>
+                  <button type="button" className="btn btn-secondary" onClick={handleDraftPaste} disabled={!importPaste.trim()}>Import pasted JSON</button>
+                </>
+              )}
+              {importErrors.length > 0 && (
+                <div role="alert" className="alert alert-error">
+                  <p>The draft was not imported:</p>
+                  <ul>{importErrors.map((m, i) => <li key={i}>{m}</li>)}</ul>
+                </div>
+              )}
+              {imported && (
+                <div className="work-order-summary" aria-live="polite">
+                  <p>
+                    <strong>Imported draft</strong>: {imported.summary.template_label}, {imported.summary.items} {imported.draft.template_id === 'source-check-v1' ? 'claims' : 'cells'}, task <code>{imported.summary.task_id}</code>.{' '}
+                    {imported.draft.procurement.mode === 'TARGETED' ? <>Targeted at <code>{imported.draft.procurement.targetHunter}</code>.</> : 'Open to all submitters.'}
+                  </p>
+                  <p>Draft SHA-256: <code data-testid="draft-sha256">{imported.sha256}</code></p>
+                  {imported.derived && (
+                    <p>
+                      <button type="button" className="btn btn-text" onClick={downloadDerivedDraft}>Download the derived draft</button>{' '}
+                      to give the onboarding skill exactly these bytes.
+                    </p>
+                  )}
+                  <p>
+                    The rubric, threshold and supplier are bound to this draft. The evaluation description will end with the committed work-order block
+                    (the exact request and its hashes); write your own words above it. The draft is not a quote: set the payout yourself.
+                  </p>
+                  {importedBlockError
+                    ? <p role="alert">{importedBlockError}</p>
+                    : <details><summary>Show the block that will be appended to the description</summary><pre className="work-order-block">{importedBlock.trim()}</pre></details>}
+                  {imported.extras.local_summary && (
+                    <details open>
+                      <summary>Found locally by the agent (not independent verification, not part of the commissioned request)</summary>
+                      <p>{imported.extras.local_summary.mode === 'RESIDUAL'
+                        ? `${imported.extras.local_summary.resolved.length} of ${imported.extras.local_summary.original_item_count} items were resolved by the agent; only the other ${imported.extras.local_summary.residual.length} are in this draft.`
+                        : 'The agent made its own non-independent pass; every item is in this draft.'}</p>
+                      <ul>
+                        {imported.extras.local_summary.resolved.map((r) => <li key={`r-${r.item_id}`}>{r.item_id}: {r.verdict}{r.value != null ? ` = ${String(r.value)}` : ''}. {r.basis}</li>)}
+                        {imported.extras.local_summary.residual.map((r) => <li key={`u-${r.item_id}`}>{r.item_id}: left for outside work ({r.reason}){r.note ? `. ${r.note}` : ''}</li>)}
+                      </ul>
+                    </details>
+                  )}
+                  {imported.extras.market_context && (
+                    <p>
+                      Market context (not a quote), {imported.extras.market_context.network}, {imported.extras.market_context.window_days ? `${imported.extras.market_context.window_days}-day window` : 'current listing'},
+                      {' '}{imported.extras.market_context.sample_size} bounties:{' '}
+                      {imported.extras.market_context.summary.median_bounty_amount_wei != null && `median ${ethers.formatEther(imported.extras.market_context.summary.median_bounty_amount_wei)} ETH; `}
+                      {imported.extras.market_context.summary.open != null && `${imported.extras.market_context.summary.open} open; `}
+                      {imported.extras.market_context.summary.median_time_to_award_seconds != null && `median time to award ${(imported.extras.market_context.summary.median_time_to_award_seconds / 3600).toFixed(1)} h. `}
+                      {imported.extras.market_context.caveat}
+                    </p>
+                  )}
+                  {imported.notes.map((n, i) => <p key={i}>{n}</p>)}
+                  {networkWarning && <p role="alert">This draft selected {imported.summary.network}, but this site is on {config.network}. Check the network before you continue.</p>}
+                  {divergence.length > 0 && (
+                    <div role="alert" className="alert alert-error">
+                      <p>The {divergence.join(', ')} no longer match the imported draft, so you cannot create the bounty yet.</p>
+                      <button type="button" className="btn btn-secondary" onClick={restoreDraftValues}>Restore draft values</button>
+                    </div>
+                  )}
+                  <button type="button" className="btn btn-text" onClick={removeImport}>Remove imported draft</button>
+                </div>
+              )}
+            </section>
+
             <div className="form-group">
               <label htmlFor="title">
                 Job Title <span className="required">*</span>
@@ -1007,11 +1164,13 @@ function CreateBounty({ walletState }) {
                   value={formData.targetHunter}
                   onChange={(e) => setFormData((prev) => ({ ...prev, targetHunter: e.target.value.trim() }))}
                   placeholder="0x... (leave empty for open bounty)"
+                  readOnly={Boolean(imported)}
                 />
                 <small className="helper-text">
                   {formData.targetHunter
                     ? 'Targeted: only this address can submit'
                     : 'Open to all: anyone can submit'}
+                  {imported ? ' (set by the imported draft; remove the import to change it)' : ''}
                 </small>
               </div>
             </div>
@@ -1627,7 +1786,7 @@ function CreateBounty({ walletState }) {
                 ← Back
               </button>
 
-              <button type="submit" className="btn btn-primary btn-lg btn-with-icon" disabled={loading || juryNodes.length === 0}>
+              <button type="submit" className="btn btn-primary btn-lg btn-with-icon" disabled={loading || juryNodes.length === 0 || divergence.length > 0}>
                 {loading ? 'Creating...' : <><Rocket size={18} /> Create Bounty</>}
               </button>
             </div>
