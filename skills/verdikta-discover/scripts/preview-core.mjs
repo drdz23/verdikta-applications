@@ -1,5 +1,5 @@
 import { supplierAddress } from './address.mjs';
-import { validateRequest, validateLocalSummary, validateMarketContext } from './validation.mjs';
+import { validateRequest, validateLocalSummary, validateMarketContext, requestItemIds } from './validation.mjs';
 import sourceTemplate from '../templates/source-check-v1.template.json' with { type: 'json' };
 import packTemplate from '../templates/evidence-pack-v1.template.json' with { type: 'json' };
 import sourceRubric from '../templates/source-check-v1.rubric.json' with { type: 'json' };
@@ -69,5 +69,31 @@ export function preview(input = {}) {
     draft: hasDraft ? { template_id: kind, request, procurement, rubric: own(rubrics[kind]), threshold: template.recommended_threshold, sharing_authorized: true } : null,
     ...(hasDraft && local_summary ? { local_summary } : {}),
     ...(market_context && !marketErrors.length ? { market_context } : {}),
+  };
+}
+
+/** The exact text scripts/preview.mjs prints for a preview: the bytes the website import and the onboarding binder commit to. */
+export const previewText = result => `${JSON.stringify(result, null, 2)}\n`;
+
+/**
+ * What an agent checking its assessment input needs to see, instead of the whole preview: whether the input makes a draft,
+ * what is missing, which items the draft holds, and the SHA-256 of the preview text, which the website shows again when the
+ * owner imports the same input. `hashHex` maps a string to its SHA-256 hex digest (the caller supplies it, so this stays pure).
+ */
+export function checkSummary(result, hashHex) {
+  const draft = result.draft;
+  return {
+    decision: result.decision,
+    reason: result.reason,
+    inputs_needed: result.inputs_needed,
+    template_id: result.template_id,
+    drafted_items: draft ? requestItemIds(draft.template_id, draft.request) : [],
+    local_summary: result.local_summary
+      ? { mode: result.local_summary.mode, resolved: result.local_summary.resolved.length, residual: result.local_summary.residual.length } : null,
+    market_context_included: Boolean(result.market_context),
+    draft_sha256: draft ? hashHex(previewText(result)) : null,
+    deliver: draft
+      ? 'Return your assessment input itself, unchanged, in a fenced json block: not this summary and not the full preview. The owner imports it on the Create Bounty page, which derives this same draft and shows this draft_sha256.'
+      : 'No draft: fix the input or ask the owner for what inputs_needed lists.',
   };
 }

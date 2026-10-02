@@ -721,6 +721,15 @@ function CreateBounty({ walletState }) {
     setFormData((prev) => ({ ...prev, targetHunter: imported.patch.targetHunter }));
   };
   const removeImport = () => { setImported(null); setImportErrors([]); setImportPaste(''); };
+  // A draft derived from an agent's assessment input can be saved, so the onboarding skill gets exactly these bytes.
+  const downloadDerivedDraft = () => {
+    if (!imported?.previewText) return;
+    const url = URL.createObjectURL(new Blob([imported.previewText], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = `work-order-draft-${imported.summary.task_id}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   // What no longer matches the imported draft. A targeted draft never silently becomes open, and an open one never gains a target.
   const divergence = imported && importApi
@@ -980,14 +989,15 @@ function CreateBounty({ walletState }) {
               {!imported && (
                 <>
                   <p>
-                    Have a draft from an agent or the <a href="/agents#buyer-preview">buyer preview</a>? Import the downloaded <code>.json</code> to prefill
-                    the request, rubric, threshold and supplier choice. It is checked in your browser with the same code the onboarding skill uses.
+                    Have a draft from an agent or the <a href="/agents#buyer-preview">buyer preview</a>? Import the downloaded <code>.json</code>, or paste the
+                    assessment input an agent returned, to prefill the request, rubric, threshold and supplier choice. It is checked in your browser with the
+                    same code the onboarding skill uses, and an assessment input is turned into its draft there too.
                     Nothing is sent or submitted: you still review every field, choose the jury and sign with your own wallet.
                   </p>
                   <label className="work-order-file">Draft file
                     <input type="file" accept=".json,application/json" onChange={handleDraftFile} aria-label="Work-order draft file" />
                   </label>
-                  <label>Or paste the draft JSON
+                  <label>Or paste the draft or assessment input JSON
                     <textarea rows={4} value={importPaste} onChange={(e) => setImportPaste(e.target.value)} spellCheck={false} aria-label="Work-order draft JSON" />
                   </label>
                   <button type="button" className="btn btn-secondary" onClick={handleDraftPaste} disabled={!importPaste.trim()}>Import pasted JSON</button>
@@ -1006,6 +1016,12 @@ function CreateBounty({ walletState }) {
                     {imported.draft.procurement.mode === 'TARGETED' ? <>Targeted at <code>{imported.draft.procurement.targetHunter}</code>.</> : 'Open to all submitters.'}
                   </p>
                   <p>Draft SHA-256: <code data-testid="draft-sha256">{imported.sha256}</code></p>
+                  {imported.derived && (
+                    <p>
+                      <button type="button" className="btn btn-text" onClick={downloadDerivedDraft}>Download the derived draft</button>{' '}
+                      to give the onboarding skill exactly these bytes.
+                    </p>
+                  )}
                   <p>
                     The rubric, threshold and supplier are bound to this draft. The evaluation description will end with the committed work-order block
                     (the exact request and its hashes); write your own words above it. The draft is not a quote: set the payout yourself.

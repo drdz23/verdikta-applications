@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { preview } from '../../../../skills/verdikta-discover/scripts/preview-core.mjs';
 import { inspectDraftBytes, draftToFormPatch, draftDivergence, composeImportedDescription, networkMismatch, MAX_DRAFT_BYTES } from '../../src/utils/workOrderImport.js';
 import { rubricWeights } from '../../src/utils/rubricWeights.js';
@@ -108,4 +110,75 @@ test('a selected network that differs from the site is flagged; an unselected on
   assert.equal(networkMismatch('BASE_SEPOLIA', 'base-sepolia'), false);
   assert.equal(networkMismatch('UNSELECTED', 'base'), false);
   assert.equal(networkMismatch(undefined, 'base'), false);
+});
+
+const bundle = fileURLToPath(new URL('scripts/preview.bundle.mjs', skill));
+const runBundle = (args, input) => spawnSync(process.execPath, [bundle, ...args], { input: JSON.stringify(input), encoding: 'utf8' });
+const inputBytes = input => new TextEncoder().encode(JSON.stringify(input));
+const baseInput = (extra = {}) => ({ request: structuredClone(request), task_summary: 'Check three claims', sharing_authorized: true, procurement_mode: 'OPEN', ...extra });
+
+test('an assessment input is turned into its draft here, committed to the exact bytes the script prints for it', () => {
+  const input = baseInput();
+  const r = inspectDraftBytes(inputBytes(input));
+  assert.equal(r.ok, true, r.errors.join('; ')); assert.equal(r.derived, true);
+  const text = JSON.stringify(preview(structuredClone(input)), null, 2) + '\n';
+  assert.equal(r.previewText, text);
+  assert.equal(r.sha256, createHash('sha256').update(text).digest('hex'));
+  // The bundled script prints exactly these bytes for the same input, and its --check summary names the same hash.
+  assert.equal(runBundle(['-'], input).stdout, text);
+  assert.equal(JSON.parse(runBundle(['--check', '-'], input).stdout).draft_sha256, r.sha256);
+  // Importing the script's output file gives the same draft, hash, summary and prefill.
+  const viaFile = inspectDraftBytes(new TextEncoder().encode(text));
+  assert.equal(viaFile.ok, true); assert.equal(viaFile.derived, false); assert.equal(viaFile.sha256, r.sha256);
+  assert.deepEqual(viaFile.summary, r.summary); assert.deepEqual(draftToFormPatch(viaFile), draftToFormPatch(r));
+  assert.ok(r.notes[0].startsWith('Derived from the assessment input'));
+});
+
+test('a targeted or hybrid input keeps its supplier and local findings; the findings stay out of the description', () => {
+  const targetedInput = inspectDraftBytes(inputBytes(baseInput({ procurement_mode: 'TARGETED', targetHunter: TARGET })));
+  assert.equal(targetedInput.ok, true); assert.deepEqual(targetedInput.draft.procurement, { mode: 'TARGETED', targetHunter: TARGET });
+  const hybrid = inspectDraftBytes(inputBytes(baseInput({ request: { ...structuredClone(request), task_id: 'residual', claims: request.claims.slice(2) },
+    local_summary: { mode: 'RESIDUAL', independent: false, performed_by: 'AGENT', original_task_id: 'import-test', original_item_count: 3, method: 'm', limitations: 'l',
+      resolved: [{ item_id: 'C1', verdict: 'SUPPORTED', value: null, source_url: 'https://docs.example/a', basis: 'LOCAL-BASIS-MARKER' }, { item_id: 'C2', verdict: 'SUPPORTED', value: null, source_url: 'https://docs.example/a', basis: 'b' }],
+      residual: [{ item_id: 'C3', reason: 'UNRESOLVED_ABSENT' }] } })));
+  assert.equal(hybrid.ok, true, hybrid.errors.join('; ')); assert.equal(hybrid.extras.local_summary.resolved.length, 2);
+  assert.doesNotMatch(composeImportedDescription(hybrid, 'x').description, /LOCAL-BASIS-MARKER/);
+});
+
+test('an input that makes no draft says why, and nothing is imported', () => {
+  const cases = {
+    'no sharing approval': [baseInput({ sharing_authorized: undefined }), 'Obtain sharing approval'],
+    'sharing declined': [baseInput({ sharing_authorized: false }), 'Sharing was declined'],
+    'no supplier choice': [baseInput({ procurement_mode: undefined }), 'Select OPEN or TARGETED'],
+    'fixture-only request': [baseInput({ request: structuredClone(example) }), 'Synthetic requests cannot be commissioned'],
+    'inconsistent local summary': [baseInput({ local_summary: { mode: 'RESIDUAL', independent: false, performed_by: 'AGENT', original_task_id: 'x', original_item_count: 9, method: 'm', limitations: 'l', resolved: [], residual: [] } }), 'NEEDS_SCOPE'],
+    'empty request': [{ request: {}, sharing_authorized: true, procurement_mode: 'OPEN' }, 'NEEDS_SCOPE'],
+  };
+  for (const [name, [input, message]] of Object.entries(cases)) {
+    const r = inspectDraftBytes(inputBytes(input));
+    assert.equal(r.ok, false, name); assert.equal(r.draft, null, name);
+    assert.ok(r.errors.some(e => e.includes(message)), `${name}: ${r.errors.join(' | ')}`);
+  }
+});
+
+test('an invalid market context in an input is left out of the draft, and the import says so', () => {
+  const r = inspectDraftBytes(inputBytes(baseInput({ market_context: { source_url: 'http://example.com/x?y=1', not_a_quote: false } })));
+  assert.equal(r.ok, true, r.errors.join('; ')); assert.equal(r.extras.market_context, null);
+  assert.ok(r.notes.some(n => n.startsWith('Market context omitted')));
+});
+
+test('a preview whose draft was shortened after the script printed it is refused, with a pointer to the assessment input', () => {
+  for (const cut of [a => { delete a.draft.rubric; }, a => { a.draft.rubric.criteria.pop(); }, a => { delete a.draft.threshold; }]) {
+    const a = open(); cut(a);
+    const r = inspectDraftBytes(bytesOf(a));
+    assert.equal(r.ok, false);
+    assert.ok(r.errors.some(e => e.includes('Paste the assessment input the agent returned')), r.errors.join(' | '));
+  }
+  // Cuts outside the draft leave the draft verifiable: it imports, and the other sections are not shown.
+  const prose = open(); delete prose.risks; delete prose.why_outsource;
+  const kept = inspectDraftBytes(bytesOf(prose));
+  assert.equal(kept.ok, true); assert.equal(kept.notes.length, 1);
+  // A genuine but uncommissionable preview gets no such hint.
+  const fixture = preview({ request: structuredClone(example), sharing_authorized: true, procurement_mode: 'OPEN' });
+  assert.deepEqual(inspectDraftBytes(bytesOf(fixture)).errors, ['Synthetic requests cannot be commissioned']);
 });

@@ -19,6 +19,22 @@ Read-only documentation helps establish compatibility, not signing trust. A tran
 
 Read `GET /api/market-summary` on the owner-selected origin when drafting outside work, to give the owner a cost and activity signal. It is public, unauthenticated, cached for five minutes, and returns aggregates only (no addresses or task content): open, awarded and closed counts, the median and interquartile range of `bountyAmountWei`, typical time to award, worst-case oracle prepay and active hunters over a stated window, split by template (`source-check-v1`, `evidence-pack-v1`, `unclassified`). It always says `not_a_quote: true`. A quartile block with fewer than 3 samples is `null`.
 
-Record it as the preview's `market_context` (see `preview-format.md`): the source URL, `fetched_at`, the endpoint's `generated_at`, network, window, the template scope you used (the request's template, or `all` when that template has too few samples), `sample_size`, `not_a_quote: true` and the figures. Market context never fills `reward_wei`, a quote, or availability: past activity is not a supplier.
+Read it with your fetch tool, not a shell command. Record it as `market_context` in the assessment input, field by field. Copy a null as null and add no other keys (the preview refuses unknown ones). Here `B` is the response's `by_service[<the request's template>]` block when its `sample_size` is at least 3, otherwise its `all` block:
+
+- `source_url`: the URL you read, `https://<origin>/api/market-summary`.
+- `fetched_at`: when you read it (ISO 8601). `generated_at`: the response's `generated_at`.
+- `network`: `BASE_SEPOLIA` for bounties-testnet.verdikta.org, `BASE` for bounties.verdikta.org.
+- `window_days`: `window.days`.
+- `service_scope`: the template id when you used its block, otherwise `all`.
+- `sample_size`: `B.sample_size`. `not_a_quote`: `true`.
+- `summary`:
+  - `open`: `B.open`; `awarded_in_window`: `B.awarded`; `closed_unawarded_in_window`: `B.closed_unawarded`.
+  - `median_bounty_amount_wei`, `p25_bounty_amount_wei`, `p75_bounty_amount_wei`: `B.bounty_amount_wei.median`, `.p25`, `.p75`.
+  - `median_time_to_award_seconds`: `B.time_to_award_seconds.median`.
+  - `median_oracle_prepay_wei`: `B.oracle_prepay_wei.median`.
+  - `active_hunters`: `hunters.active_in_window`.
+- `caveat`: one sentence saying it is aggregate past activity, not a quote.
+
+Market context never fills `reward_wei`, a quote, or availability: past activity is not a supplier.
 
 If the route is unavailable, fall back to `/api/jobs.txt`: record only what the listing shows (open count and amounts), `fallback: "JOBS_TXT"`, `window_days: null`, scope `all`. If neither works, omit `market_context` and say so. Never infer a price from a listing.

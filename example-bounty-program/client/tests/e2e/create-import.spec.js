@@ -103,3 +103,28 @@ test('local findings are shown as the agent\'s own and never enter the descripti
   expect(block).not.toContain('LOCAL-BASIS-MARKER');
   expect(block).not.toContain('"claim_id":"C1"');
 });
+
+test('an assessment input an agent returned becomes its draft in the browser, with the hash and bytes the script prints', async ({ page }) => {
+  const writes = []; page.on('request', r => { if (r.method() !== 'GET') writes.push(`${r.method()} ${r.url()}`); });
+  const panel = await openCreate(page);
+  const input = { request: structuredClone(request), task_summary: 'Check three claims (e2e input)', sharing_authorized: true, procurement_mode: 'OPEN' };
+  await panel.getByLabel('Work-order draft JSON').fill(JSON.stringify(input));
+  await panel.getByRole('button', { name: 'Import pasted JSON' }).click();
+  await expect(panel.getByText('Imported draft', { exact: true })).toBeVisible();
+  const text = JSON.stringify(preview(structuredClone(input)), null, 2) + '\n';
+  await expect(panel.getByTestId('draft-sha256')).toHaveText(createHash('sha256').update(text).digest('hex'));
+  await expect(panel.getByText(/^Derived from the assessment input/)).toBeVisible();
+  const download = page.waitForEvent('download');
+  await panel.getByRole('button', { name: 'Download the derived draft' }).click();
+  expect(await readFile(await (await download).path(), 'utf8')).toBe(text);
+  await expect(page.getByLabel(/Job Title/)).toHaveValue('Technical claim source check: 3 claims');
+  expect(writes).toEqual([]);
+});
+
+test('an assessment input that makes no draft is refused with the reason', async ({ page }) => {
+  const panel = await openCreate(page);
+  await panel.getByLabel('Work-order draft JSON').fill(JSON.stringify({ request: structuredClone(request), procurement_mode: 'OPEN' }));
+  await panel.getByRole('button', { name: 'Import pasted JSON' }).click();
+  await expect(panel.getByRole('alert')).toContainText('Obtain sharing approval');
+  await expect(panel.getByText('Imported draft', { exact: true })).toHaveCount(0);
+});

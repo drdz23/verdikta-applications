@@ -3,8 +3,17 @@
 // environment or node-only imports, and hashing through @noble/hashes (already a dependency).
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
-import { preview } from './preview-core.mjs';
+import { preview, previewText } from './preview-core.mjs';
 import { validateRequest } from './validation.mjs';
+
+export { previewText };
+
+/**
+ * An assessment input (the agent's own judgments, as in examples/assessment.json) rather than a preview the script printed.
+ * Only an input has a top-level `request`; a preview carries its request inside `draft`.
+ */
+export const isAssessmentInput = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  && Boolean(value.request) && typeof value.request === 'object' && !Array.isArray(value.request) && !Object.hasOwn(value, 'draft');
 
 // Conservative cap on the composed evaluation description (the composed-query cap is about 10k).
 export const MAX_DESCRIPTION_CHARS = 6000;

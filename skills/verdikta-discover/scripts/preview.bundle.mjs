@@ -8018,6 +8018,7 @@ var require_dist = __commonJS({
 
 // scripts/preview.mjs
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 
 // node_modules/@noble/hashes/esm/_u64.js
 var U32_MASK64 = /* @__PURE__ */ BigInt(2 ** 32 - 1);
@@ -10242,6 +10243,22 @@ function preview(input = {}) {
     ...market_context && !marketErrors.length ? { market_context } : {}
   };
 }
+var previewText = (result) => `${JSON.stringify(result, null, 2)}
+`;
+function checkSummary(result, hashHex) {
+  const draft = result.draft;
+  return {
+    decision: result.decision,
+    reason: result.reason,
+    inputs_needed: result.inputs_needed,
+    template_id: result.template_id,
+    drafted_items: draft ? requestItemIds(draft.template_id, draft.request) : [],
+    local_summary: result.local_summary ? { mode: result.local_summary.mode, resolved: result.local_summary.resolved.length, residual: result.local_summary.residual.length } : null,
+    market_context_included: Boolean(result.market_context),
+    draft_sha256: draft ? hashHex(previewText(result)) : null,
+    deliver: draft ? "Return your assessment input itself, unchanged, in a fenced json block: not this summary and not the full preview. The owner imports it on the Create Bounty page, which derives this same draft and shows this draft_sha256." : "No draft: fix the input or ask the owner for what inputs_needed lists."
+  };
+}
 
 // scripts/preview.mjs
 var stdin = async () => {
@@ -10249,12 +10266,16 @@ var stdin = async () => {
   for await (const chunk of process.stdin) text += chunk;
   return text;
 };
+var sha256Hex = (text) => createHash("sha256").update(text).digest("hex");
 if (process.argv[2] === "--templates") console.log(JSON.stringify(templates, null, 2));
 else {
   try {
-    if (!process.argv[2]) throw new Error("Usage: node scripts/preview.mjs assessment.json | - (read standard input) | --templates");
-    const input = JSON.parse(process.argv[2] === "-" ? await stdin() : await readFile(process.argv[2], "utf8"));
-    console.log(JSON.stringify(preview(input), null, 2));
+    const check = process.argv[2] === "--check";
+    const source = process.argv[check ? 3 : 2];
+    if (!source) throw new Error("Usage: node scripts/preview.mjs [--check] assessment.json | - (read standard input) | --templates");
+    const result = preview(JSON.parse(source === "-" ? await stdin() : await readFile(source, "utf8")));
+    process.stdout.write(check ? `${JSON.stringify(checkSummary(result, sha256Hex), null, 2)}
+` : previewText(result));
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

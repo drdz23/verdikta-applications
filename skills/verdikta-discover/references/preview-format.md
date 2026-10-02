@@ -1,6 +1,6 @@
 # Preview contract
 
-Return a short explanation and the preview object that `scripts/preview.bundle.mjs` prints for your assessment input, never one typed by hand (`references/drafting.md`). If you cannot run commands, return the assessment input instead (`examples/assessment.json`, `examples/assessment-hybrid.json`); the owner, or an agent that can run commands, produces the preview from it. The fields below describe what the script emits. The package schema and example are implementation handoff assets, not a newly deployed endpoint.
+Return a short explanation and your assessment input (`examples/assessment.json`, `examples/assessment-hybrid.json`; `references/drafting.md`), never a preview. The preview is what `scripts/preview.bundle.mjs` derives from the input, and the website's import and the onboarding binder derive the same one; a typed, edited or shortened preview is refused. The fields below describe that preview, so you can read the script's output and explain the draft. The package schema and example are implementation handoff assets, not a newly deployed endpoint.
 
 Required distinctions:
 - decision: PREVIEW, LOCAL, NEEDS_SCOPE, UNSUITABLE, or HANDOFF_REQUESTED.

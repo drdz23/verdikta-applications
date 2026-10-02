@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { preview } from '../scripts/preview-core.mjs';
-import { sha256Hex, sameJson, checkWorkOrderDraft, composeEvaluationDescription, MAX_DESCRIPTION_CHARS } from '../scripts/work-order.mjs';
+import { sha256Hex, sameJson, checkWorkOrderDraft, composeEvaluationDescription, MAX_DESCRIPTION_CHARS, isAssessmentInput, previewText } from '../scripts/work-order.mjs';
 
 const root = new URL('../', import.meta.url);
 const json = async name => JSON.parse(await readFile(new URL(name, root), 'utf8'));
@@ -70,4 +70,12 @@ test('the server classifier reads the lines the shared composer writes', () => {
     const { description } = composeEvaluationDescription({ baseDescription: 'Owner text', draftSha256: 'b'.repeat(64), templateId: id, request });
     assert.equal(classifyService(description), id);
   }
+});
+
+test('isAssessmentInput tells an agent\'s input from a preview: only an input has a top-level request', async () => {
+  const input = await json('examples/assessment.json');
+  assert.equal(isAssessmentInput(input), true);
+  assert.equal(isAssessmentInput({ ...input, decision: 'PREVIEW' }), true, 'a stray decision field does not make it a preview');
+  for (const notInput of [preview(input), draftOf(), {}, [], null, 'x', { request: null }, { request: [] }, { request: {}, draft: null }]) assert.equal(isAssessmentInput(notInput), false, JSON.stringify(notInput)?.slice(0, 40));
+  assert.equal(previewText(draftOf()), `${JSON.stringify(draftOf(), null, 2)}\n`);
 });
