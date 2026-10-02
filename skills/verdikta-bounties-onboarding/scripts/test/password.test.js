@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, readFile, stat, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, stat, rm, symlink, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Wallet, encryptKeystoreJsonSync } from 'ethers';
-import { walletPassword, removeEnvKey } from '../_secret.js';
+import { walletPassword, removeEnvKey, readPasswordFile } from '../_secret.js';
 
 const scripts = fileURLToPath(new URL('..', import.meta.url));
 const synthetic = new Wallet('0x' + '22'.repeat(32)); // Synthetic offline key, never funded.
@@ -21,9 +21,28 @@ async function home(t, envLines, keystorePassword) {
 }
 const run = (dir, args, extraEnv = {}) => spawnSync(process.execPath, args, { cwd: scripts, encoding: 'utf8', timeout: 20000, input: '', env: { HOME: dir, PATH: process.env.PATH, ...extraEnv } });
 
-test('the wallet password comes only from the environment or a terminal, never a file', async () => {
-  assert.equal(await walletPassword({ env: { VERDIKTA_WALLET_PASSWORD: 'from-secret-store' } }), 'from-secret-store');
-  await assert.rejects(walletPassword({ env: {}, input: { isTTY: false } }), /never read from a file/);
+test('the wallet password comes from the environment, an operator-named file, or a terminal; never the .env', async t => {
+  const dir = await mkdtemp(`${tmpdir()}/verdikta-pwfile-`); t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = `${dir}/wallet-password`; await writeFile(file, 'from-file\n', { mode: 0o600 });
+  assert.equal(await walletPassword({ env: { VERDIKTA_WALLET_PASSWORD: 'from-secret-store', VERDIKTA_WALLET_PASSWORD_FILE: file } }), 'from-secret-store');
+  assert.equal(await walletPassword({ env: { VERDIKTA_WALLET_PASSWORD_FILE: file }, input: { isTTY: false } }), 'from-file');
+  await assert.rejects(walletPassword({ env: {}, input: { isTTY: false } }), /never read from the configuration \.env/);
+});
+
+test('a password file must be private, real, and outside the skill and the .env', async t => {
+  const dir = await mkdtemp(`${tmpdir()}/verdikta-pwfile-`); t.after(() => rm(dir, { recursive: true, force: true }));
+  const good = `${dir}/pw`; await writeFile(good, 'secret', { mode: 0o600 });
+  assert.equal(readPasswordFile(good), 'secret');
+  const open = `${dir}/open`; await writeFile(open, 'secret'); await chmod(open, 0o644);
+  assert.throws(() => readPasswordFile(open), /chmod 600/);
+  const link = `${dir}/link`; await symlink(good, link);
+  assert.throws(() => readPasswordFile(link), /regular file/);
+  const env = `${dir}/.env`; await writeFile(env, 'secret', { mode: 0o600 });
+  assert.throws(() => readPasswordFile(env), /must not be a \.env file/);
+  assert.throws(() => readPasswordFile('relative/pw'), /absolute path/);
+  assert.throws(() => readPasswordFile(`${scripts}package.json`), /outside the skill directory/);
+  assert.throws(() => readPasswordFile(`${dir}/missing`), /does not exist/);
+  assert.throws(() => readPasswordFile(good, { uid: 123456 }), /owned by the user/);
 });
 
 test('removeEnvKey drops only that assignment', () => {
@@ -52,9 +71,10 @@ test('migration moves a password that unlocks the keystore to an operator-named 
   assert.equal(await readFile(dest, 'utf8'), 'pw-123');
   assert.equal((await stat(dest)).mode & 0o777, 0o600);
   const env = await readFile(`${config}/.env`, 'utf8');
-  assert.doesNotMatch(env, /VERDIKTA_WALLET_PASSWORD/);
+  assert.doesNotMatch(env, /^VERDIKTA_WALLET_PASSWORD=/m);
   assert.match(env, /VERDIKTA_NETWORK=base-sepolia/);
   assert.match(env, /OFFBOT_ADDRESS=0x0+1/);
+  assert.ok(env.includes(`VERDIKTA_WALLET_PASSWORD_FILE=${dest}`));
   assert.match(r.stdout, /source: "file", provider: "verdikta_wallet", id: "value"/);
   assert.match(r.stdout, new RegExp(synthetic.address));
 });
@@ -95,5 +115,5 @@ test('migration finds the stable .env when VERDIKTA_SECRETS_DIR is written with 
   const { dir, config } = await home(t, ['VERDIKTA_SECRETS_DIR=~/.config/verdikta-bounties', 'VERDIKTA_WALLET_PASSWORD=pw-123'], 'pw-123');
   const r = run(dir, ['onboard.js', '--migrate-password', '--to-file', `${dir}/secrets/pw`]);
   assert.equal(r.status, 0, r.stderr);
-  assert.doesNotMatch(await readFile(`${config}/.env`, 'utf8'), /VERDIKTA_WALLET_PASSWORD/);
+  assert.doesNotMatch(await readFile(`${config}/.env`, 'utf8'), /^VERDIKTA_WALLET_PASSWORD=/m);
 });

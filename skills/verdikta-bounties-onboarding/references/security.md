@@ -13,7 +13,7 @@ Recommended practices:
 ## Key storage
 This skill uses an **encrypted JSON keystore** (ethers-compatible).
 
-- The keystore password is never stored by this skill. Scripts take `VERDIKTA_WALLET_PASSWORD` from the process environment (inject it from a secret store) or prompt for it without echo; they refuse to run while the stable `.env` still contains it. See [wallet password](onboarding.md#wallet-password).
+- The keystore password is never stored by this skill. Scripts take `VERDIKTA_WALLET_PASSWORD` from the process environment, read the mode-600 file named by `VERDIKTA_WALLET_PASSWORD_FILE` if the operator sets one, or prompt without echo. They refuse to run while the stable `.env` still contains the password. See [wallet password](onboarding.md#wallet-password).
 - Never hardcode private keys.
 - No script in this skill exports or prints raw private keys. Private keys are decrypted in-memory only when signing transactions and are never written to stdout, logs, or files.
 - Do not decrypt keys outside the authorized executor to bypass a guard.

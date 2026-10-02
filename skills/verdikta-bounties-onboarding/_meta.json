@@ -95,10 +95,11 @@
       "BASE_RPC_URL",
       "BASE_SEPOLIA_RPC_URL",
       "OFFBOT_ADDRESS",
-      "VERDIKTA_BOUNTIES_BASE_URL"
+      "VERDIKTA_BOUNTIES_BASE_URL",
+      "VERDIKTA_WALLET_PASSWORD_FILE"
     ],
     "sensitive": true,
-    "notes": "Configuration only: the .env holds no secret. VERDIKTA_WALLET_PASSWORD is never stored by the skill; it comes from the process environment (an OpenClaw SecretRef on skills.entries.verdikta-bounties-onboarding.apiKey, or another secret manager) or a no-echo terminal prompt, and decrypts the keystore in memory only when signing. Scripts refuse to run while the .env still contains it. Private keys are never written to disk or logs. The bot API key is stored separately at ~/.config/verdikta-bounties/verdikta-bounties-bot.json (chmod 600) and sent only to the reviewed API origin. Grant the wallet minimal funds only (hot wallet posture)."
+    "notes": "Configuration only: the .env holds no secret. VERDIKTA_WALLET_PASSWORD is never stored by the skill; it comes from the process environment (another secret manager, or an OpenClaw SecretRef on skills.entries.verdikta-bounties-onboarding.apiKey for runtimes that inject it), from a mode-600 file outside the skill named by VERDIKTA_WALLET_PASSWORD_FILE, or from a no-echo terminal prompt, and decrypts the keystore in memory only when signing. Scripts refuse to run while the .env still contains it. Private keys are never written to disk or logs. The bot API key is stored separately at ~/.config/verdikta-bounties/verdikta-bounties-bot.json (chmod 600) and sent only to the reviewed API origin. Grant the wallet minimal funds only (hot wallet posture)."
   },
   "credentialSetup": {
     "type": "interactive",

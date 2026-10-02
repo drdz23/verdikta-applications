@@ -57,7 +57,7 @@ The model expresses intent. Deterministic code validates the exact transaction a
 
 ## Onboard an authorized operator
 
-For discovery alone use `verdikta-discover`. For an owner-approved wallet setup, run `node onboard.js` interactively from `scripts/`. The wizard selects Base or Base Sepolia, creates/imports an encrypted low-balance wallet, waits for ETH funding, registers an API identity, and prints the command for a read-only job listing. A human enters secrets in their own terminal, where they are not echoed; never put them in chat or model logs. The wallet password is never written to disk: supply `VERDIKTA_WALLET_PASSWORD` at run time from a secret store (see [wallet password](references/onboarding.md#wallet-password)).
+For discovery alone use `verdikta-discover`. For an owner-approved wallet setup, run `node onboard.js` interactively from `scripts/`. The wizard selects Base or Base Sepolia, creates/imports an encrypted low-balance wallet, waits for ETH funding, registers an API identity, and prints the command for a read-only job listing. A human enters secrets in their own terminal, where they are not echoed; never put them in chat or model logs. The skill never stores the wallet password: supply `VERDIKTA_WALLET_PASSWORD` at run time from a secret store, or point `VERDIKTA_WALLET_PASSWORD_FILE` at a mode-600 file you keep outside the skill (see [wallet password](references/onboarding.md#wallet-password)).
 
 For separate steps, environment configuration and endpoint reference, read [operator setup](references/onboarding.md). The available helpers are `wallet_init.js`, `funding_instructions.js`, `funding_check.js`, `bot_register.js`, `preflight.js` and the read-only `bounty_worker_min.js`. Wallet creation/import, registration and funding each require owner authorization. Current evaluation fees are ETH; no LINK purchase or swap is needed.
 
@@ -72,7 +72,8 @@ Financial scripts load exported configuration and the stable `~/.config/verdikta
 - `VERDIKTA_NETWORK`: explicitly `base` or `base-sepolia`; no implicit mainnet default.
 - `VERDIKTA_BOUNTIES_BASE_URL`: optional; only the matching reviewed origin is accepted, and that origin is used when it is unset.
 - `VERDIKTA_KEYSTORE_PATH`: the encrypted wallet file.
-- `VERDIKTA_WALLET_PASSWORD`: from the process environment only (an OpenClaw SecretRef or your secret manager), or typed in a terminal. Never stored in `.env`.
+- `VERDIKTA_WALLET_PASSWORD`: from the process environment (your secret manager or an OpenClaw SecretRef), or typed in a terminal. Never stored in `.env`.
+- `VERDIKTA_WALLET_PASSWORD_FILE`: optional path to a mode-600 password file outside the skill, used when the variable is unset. Needed for OpenClaw agents on the Codex harness, whose shells do not receive injected skill secrets.
 - `VERDIKTA_BOT_FILE`: existing API identity file (stable secrets directory default).
 - `VERDIKTA_SPEND_POLICY`: path to an owner-reviewed limits JSON. See `references/commission.md`.
 

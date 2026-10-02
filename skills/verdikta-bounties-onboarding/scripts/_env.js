@@ -4,7 +4,7 @@
 //   1) already-exported process environment variables
 //   2) ~/.config/verdikta-bounties/.env — stable path, survives skill updates (configuration only)
 //
-// The wallet password is never read from a file. If the stable .env still holds VERDIKTA_WALLET_PASSWORD
+// The wallet password is never read from this .env (see _secret.js for its sources). If the stable .env still holds VERDIKTA_WALLET_PASSWORD
 // (installations before 1.6.0), every script refuses to run until `node onboard.js --migrate-password` removes it.
 //
 // scripts/.env is intentionally ignored. Keeping credentials or endpoint

@@ -13,7 +13,7 @@ import dotenv from 'dotenv';
 import './_env.js';
 import { providerFor, loadWallet, resolvePath, arg, hasFlag, reviewedApiOrigin } from './_lib.js';
 import { defaultSecretsDir, ensureDir } from './_paths.js';
-import { createPrompt, walletPassword, removeEnvKey, PASSWORD_ENV } from './_secret.js';
+import { createPrompt, walletPassword, removeEnvKey, PASSWORD_ENV, PASSWORD_FILE_ENV } from './_secret.js';
 
 function envNum(name, def) {
   const v = process.env[name];
@@ -466,10 +466,14 @@ async function migratePassword({ envPath, envText, secretsDir, prompt }) {
     if (held !== stored) throw new Error('That does not match the stored password; nothing was changed. Store it in your secret manager first, or use --to-file.');
   }
 
-  await fs.writeFile(envPath, removeEnvKey(envText, PASSWORD_ENV).replace(/\s+$/, '') + os.EOL, { mode: 0o600 });
+  let nextEnv = removeEnvKey(envText, PASSWORD_ENV).replace(/\s+$/, '') + os.EOL;
+  // A named file is also recorded as the scripts' password source; the path is not a secret.
+  if (target) nextEnv = upsertEnv(nextEnv, { [PASSWORD_FILE_ENV]: path.resolve(resolvePath(target)) });
+  await fs.writeFile(envPath, nextEnv, { mode: 0o600 });
   await fs.chmod(envPath, 0o600);
   console.log(`Removed ${PASSWORD_ENV} from ${envPath}. Wallet ${wallet.address} is unchanged.`);
-  console.log(`\nFrom now on, supply ${PASSWORD_ENV} at run time. With OpenClaw:`);
+  if (target) console.log(`Recorded ${PASSWORD_FILE_ENV}=${path.resolve(resolvePath(target))} in ${envPath}; the scripts read the password from that file.`);
+  console.log(`\nFor OpenClaw runtimes that inject skill secrets (not Codex-harness shells), you can also bind ${PASSWORD_ENV}:`);
   if (target) {
     console.log(`  secrets.providers.verdikta_wallet = { source: "file", path: "${path.resolve(resolvePath(target))}", mode: "singleValue" }`);
     console.log('  skills.entries.verdikta-bounties-onboarding.apiKey = { source: "file", provider: "verdikta_wallet", id: "value" }');
