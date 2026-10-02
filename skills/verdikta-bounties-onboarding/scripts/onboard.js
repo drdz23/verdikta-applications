@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { Wallet, formatEther } from 'ethers';
 
 import './_env.js';
-import { providerFor, loadWallet, resolvePath, arg, hasFlag } from './_lib.js';
+import { providerFor, loadWallet, resolvePath, arg, hasFlag, reviewedApiOrigin } from './_lib.js';
 import { defaultSecretsDir, ensureDir } from './_paths.js';
 
 function envNum(name, def) {
@@ -265,23 +265,13 @@ async function main() {
     }
     console.log(`→ ${network}`);
 
-    // 2) Bounties base URL — always derive from the chosen network.
-    // On a network switch the old URL would be wrong, so we re-derive.
-    const derivedBaseUrl = (network === 'base-sepolia'
-      ? 'https://bounties-testnet.verdikta.org'
-      : 'https://bounties.verdikta.org');
-
+    // 2) Bounties API origin: always the reviewed origin for the chosen network (deployments.json).
+    // The bot API key is never sent anywhere else, so a different URL left in an older .env is replaced.
+    const baseUrl = reviewedApiOrigin(network);
     const existingBaseUrl = (current.VERDIKTA_BOUNTIES_BASE_URL || process.env.VERDIKTA_BOUNTIES_BASE_URL || '').replace(/\/+$/, '');
     const networkChanged = priorNetwork && priorNetwork !== network;
-    let baseUrl = (!networkChanged && existingBaseUrl) ? existingBaseUrl : derivedBaseUrl;
-
-    if (!networkChanged && existingBaseUrl && existingBaseUrl !== derivedBaseUrl) {
-      // Existing URL doesn't match derived — ask if they want to keep it
-      const baseUrlAns = (await rl.question(`Bounties base URL [${baseUrl}]: `)).trim();
-      baseUrl = (baseUrlAns || baseUrl).replace(/\/+$/, '');
-    } else {
-      console.log(`Bounties URL: ${baseUrl}`);
-    }
+    if (existingBaseUrl && existingBaseUrl !== baseUrl) console.log(`Replacing Bounties URL ${existingBaseUrl} with the reviewed origin for ${network}.`);
+    console.log(`Bounties URL: ${baseUrl}`);
 
     // 3) Owner/sweep
     const ownerDefault = current.OFFBOT_ADDRESS && isAddress(current.OFFBOT_ADDRESS) ? current.OFFBOT_ADDRESS : '';
@@ -426,19 +416,8 @@ async function main() {
 
     console.log(`\n✅ Smoke test OK: can list jobs (OPEN jobs returned: ${count})`);
 
-    // 10) Optional: run the worker once as a final integration test (read-only: lists open jobs)
-    const runWorker = (await rl.question('\nRun bounty_worker_min.js now (lists open bounties, read-only)? (Y/n) ')).trim().toLowerCase();
-    if (!(runWorker === 'n' || runWorker === 'no')) {
-      const { spawn } = await import('node:child_process');
-      await new Promise((resolve, reject) => {
-        const p = spawn(process.execPath, [fileURLToPath(new URL('./bounty_worker_min.js', import.meta.url))], {
-          stdio: 'inherit',
-          env: { ...process.env, VERDIKTA_BOT_FILE: botOut }
-        });
-        p.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`bounty_worker_min.js exited with ${code}`)));
-      });
-      console.log('\n✅ Worker run complete.');
-    }
+    // 10) Optional read-only check, left to the operator: onboarding starts no child process.
+    console.log(`\nTo list open bounties (read-only): VERDIKTA_BOT_FILE=${botOut} node ${fileURLToPath(new URL('./bounty_worker_min.js', import.meta.url))}`);
 
     console.log('\nKeystore:');
     console.log(`- Path: ${keystoreAbs}`);

@@ -8,6 +8,7 @@ import { defaultSecretsDir } from './_paths.js';
 
 // Generated escrow + lens ABI and reviewed deployment snapshots.
 import { abi, deployments } from './_transaction-guards.js';
+export { reviewedApiOrigin } from './_transaction-guards.js';
 import { execute, loadSpendPolicy } from './_executor.js';
 export { preflightDeployment, loadSpendPolicy } from './_executor.js';
 export const ESCROW = Object.fromEntries(Object.entries(deployments).map(([n,d]) => [n,d.address]));
