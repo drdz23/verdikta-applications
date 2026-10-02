@@ -96,6 +96,7 @@ test('with a Codex rollout, shell calls come unredacted from Codex\'s log, and -
     { call_id: '2', calls: [{ tool: 'web__run', open: ['https://example.org/a'], search: [] }], output: 'page', final_urls: [], statuses: [] },
     { call_id: '3', calls: [{ tool: 'apply_patch', paths: ['notes.json'] }], output: 'ok', final_urls: [], statuses: [] },
     { call_id: '4', calls: [{ tool: 'exec_command', command: 'cat > /tmp/x.json <<\'J\'\n{}\nJ', workdir: '/w' }], output: '', final_urls: [], statuses: [] },
+    { call_id: '5', calls: [{ tool: 'exec_command', command: "curl -fsSL 'https://example.org/a' -o /tmp/a.md && wget -q -O /tmp/b.md https://example.org/b && curl -s https://example.org/c -o -", workdir: '/w' }], output: '', final_urls: [], statuses: [] },
   ] };
   const events = [call('e', 'bash', { command: REDACTED }), result('e', 'bash', REDACTED)];
   const rec = await runExtract(events, 'Decision: PREVIEW\n\n```json\n' + JSON.stringify(input) + '\n```', 'read,web_fetch,bash', codex);
@@ -108,7 +109,7 @@ test('with a Codex rollout, shell calls come unredacted from Codex\'s log, and -
   const wrappedRec = await runExtract(events, 'Decision: PREVIEW', 'read,web_fetch,bash', { ...codex, scripts: [{ ...codex.scripts[0], output: 'Output:\n' + JSON.stringify({ check: summary }) }] });
   assert.equal(wrappedRec.script_checks.length, 1); assert.equal(wrappedRec.script_checks[0].draft_sha256, JSON.parse(summary).draft_sha256);
   assert.deepEqual(rec.web_opens.map(w => w.refs), [['https://example.org/a']]);
-  assert.deepEqual(rec.file_writes, ['notes.json', '/tmp/x.json']);
+  assert.deepEqual(rec.file_writes, ['notes.json', '/tmp/x.json', '/tmp/a.md', '/tmp/b.md']);
   assert.equal(rec.assessment_inputs.length, 1);
-  assert.deepEqual(rec.shell_flags.network, []);
+  assert.equal(rec.shell_flags.network.length, 1, 'the curl/wget command is network use');
 });

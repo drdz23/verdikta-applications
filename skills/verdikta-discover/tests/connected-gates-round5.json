@@ -92,7 +92,13 @@
   "the before_tool_call hook",
   "any Base Sepolia transaction"
  ],
- "changelog": [],
+ "changelog": [
+  {
+   "date": "2026-10-02",
+   "change": "Probe 5 (tag r5-s1, 5 turns, not counted): CF03 handled the redirect (PREVIEW, input fundable), CB01 and CS01 clean. Two lapses before the skill's rules were read: CF01 ('verify them ... yourself or with outside help, your call') never opened the skill and answered 'unable to verify' with no draft; CH01 batched `sed SKILL.md && ... curl -o /tmp/...` in one command, so the downloads ran before the rules were read. Fix (description only): it applies when the owner 'wants or allows' outside work or 'leaves outside help to your judgment', and asks the agent to 'Open it in a step of its own before fetching any page such a task names'. Harness: curl -o and wget -O count as file writes. Re-probe under r5b-s1.",
+   "reason": "Pre-registered probe rule (no input where a draft is expected; shell network use)."
+  }
+ ],
  "fetch_checks_scope": "skill_opened",
  "skill_changes_since_round_4": [
   "Reading rule 5: after every fetch, compare the final URL the tool reports with the URL asked for (with a shell: node scripts/screen.mjs redirect <asked> <final>); a different host, even another host of the same organization, makes the source unavailable however right the page looks, and its items go in the residue, never a verdict (round-4 r4-s2 CF03)."

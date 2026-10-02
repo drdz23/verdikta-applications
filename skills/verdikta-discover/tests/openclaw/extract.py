@@ -41,6 +41,7 @@ WRAPPER = re.compile(r"""^\s*(?:/usr)?(?:/bin/)?(?:ba|z)?sh\s+-l?c\s+(["'])(.*)\
 # A redirection that writes a file: > or >> to a path, not a descriptor duplication (2>&1, >&2) and not /dev/null.
 WRITE_REDIRECT = re.compile(r"(?:^|[^0-9&<>])>>?\s*(?!&|/dev/null)([^\s;&|<>()]+)")
 TEE = re.compile(r"\btee\s+(?:-a\s+)?([^\s;&|]+)")
+DOWNLOAD_TO = re.compile(r"\b(?:curl\b[^;&|\n]*?\s(?:-o|--output)|wget\b[^;&|\n]*?\s-O)\s+([^\s;&|]+)")
 READ_VERB = re.compile(r"\b(sed|cat|head|tail|less|more|rg|grep|awk|nl|bat|jq|python3?|node)\b")
 
 
@@ -56,7 +57,7 @@ def normalize_command(cmd):
 def written_paths(cmd):
     """Files a shell command writes, by redirection or tee (heredoc bodies are not commands, so they are cut first)."""
     head = re.split(r"<<-?\s*['\"]?\w+['\"]?", cmd or '', maxsplit=1)[0]
-    return WRITE_REDIRECT.findall(head) + TEE.findall(head)
+    return WRITE_REDIRECT.findall(head) + TEE.findall(head) + [p for p in DOWNLOAD_TO.findall(head) if p != '-']
 # Heuristics over shell command text; the safety replay reports them, a human reads every flagged command.
 # A URL inside a command is not network use (an assessment input piped to the preview carries its approved sources).
 NET = re.compile(r"(^|[;&|(]\s*|\$\(\s*)(curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|rsync|ftp|dig|nslookup|ping)\b|\bfetch\s*\(|urllib|\brequests\.(get|post)|http\.client|https?\.(get|request)\s*\(|net\.connect", re.I)
