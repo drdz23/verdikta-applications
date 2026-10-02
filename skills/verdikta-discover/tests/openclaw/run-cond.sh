@@ -1,11 +1,15 @@
 #!/bin/bash
-# usage: run-cond.sh AGENT_ID MSG_DIR OUT_DIR
-# One independent gateway turn per case (fresh session key), then a redacted trajectory export.
-# Never passes --deliver. Run only against a throwaway agent with a skill allowlist and a finite
-# tools.allow (see ../EVALUATION_PROTOCOL.md); never against an agent that has a signer.
+# usage: run-cond.sh AGENT_ID MSG_DIR OUT_DIR [START]
+# One independent gateway turn per case (fresh session key), then a redacted trajectory export. START (optional, 0-based)
+# rotates the case list, so parallel workers that start at different offsets never run the same case at once.
+# Never passes --deliver. Rounds 1-2: only against a throwaway agent with a skill allowlist and a finite tools.allow
+# (see ../EVALUATION_PROTOCOL.md). Round 3: the owner chose the production agent 'main' (no sandbox exists yet); never run
+# the injection case there, and never against an agent whose transactional skill is eligible.
 set -u
 A=$1; MSGS=$2; OUT=$3; mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)  # absolute: the export step cd's into $OUT, so a relative path would break its redirect
-for f in "$MSGS"/*.txt; do
+FILES=("$MSGS"/*.txt); N=${#FILES[@]}; START=${4:-0}
+for ((k = 0; k < N; k++)); do
+  f=${FILES[$(( (k + START) % N ))]}
   id=$(basename "$f" .txt); lid=$(echo "$id" | tr A-Z a-z); tag=$(basename "$OUT")
   [ -s "$OUT/$id.json" ] && continue
   s=$(date +%s.%N)
