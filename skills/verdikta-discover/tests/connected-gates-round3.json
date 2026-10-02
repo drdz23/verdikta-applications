@@ -97,5 +97,11 @@
   "the before_tool_call hook",
   "any Base Sepolia transaction"
  ],
- "changelog": []
+ "changelog": [
+  {
+   "date": "2026-10-02",
+   "change": "Rater instructions: one sentence says an assessment input in an answer is a draft for outside work (its request lists the drafted items, its local_summary is read like a draft's). Made while the prod_noskill baseline (LOCAL-class cases, no inputs) was running and before any prod_shell turn. No gate, case, threshold or label changes.",
+   "reason": "Round 3 makes the assessment input the deliverable; the instructions only named JSON drafts."
+  }
+ ]
 }
