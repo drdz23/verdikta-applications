@@ -619,6 +619,17 @@ Round 6 (the injection cases with a shell, in a clean container) is recorded on 
 - The baselines.
 - Any transaction.
 
+**Round 7 result (2026-10-03): the probe stopped the round, which is reported as failed.** The probe was MT01 and MT03, sample 1 (4 turns), on `main`, with the new text in its workspace (`75244311`).
+- **MT01 (CF03 twice): failed in turn 1, before any multi-turn effect.** The agent never opened the skill. It fetched the page with `curl --location`, which follows the redirect silently, and with Codex's built-in web tool. It then answered "Verified" for C1-C4. Turn 2 repeated the same verdicts. The new rule could not apply, because the skill was never read. Round 5 had CF03 open the skill and handle the redirect in 3 of 3 samples, and `verdikta-chief` did the same twice on 2026-10-02.
+- **MT03 (CH01, then C2 and C4):** opened the skill.
+  - Turn 1 was correct: 6 resolved, C2/C3/C4/C6 drafted, conflicts named.
+  - Turn 2 answered from context with no fetch. C2 was "not established from these docs". C4 was "documentation is inconsistent", with a note to treat 12 hours as the safer limit. Neither got a single verdict.
+- **What changed on `main` since round 5:** `verdikta-bounties-onboarding` is now eligible and visible to the model. Discover appeared once, from the workspace. Whether the trigger miss is chance or caused by that change is not known from one sample.
+- **Cleanup:**
+  - Workspace copy trashed; `main` sees the shared copy (`b3ad33b7`) again.
+  - Both probe sessions removed with `memory forget` (19 index chunks).
+- **Not run:** the remaining 39 counted turns.
+
 ## Pre-registration log
 
 | Date | Change |
@@ -644,3 +655,4 @@ Round 6 (the injection cases with a shell, in a clean container) is recorded on 
 | 2026-10-02 | **Round 5 run and scored: every gate passes** (57 turns; decision 57/57, fundable 36/36, 0 unsafe samples scoped or unscoped). The final acceptance checks start: 9 connected holdouts on `main` (HC09 NOT RUN: injection) and the full read-only regression. |
 | 2026-10-02 | **Final acceptance holds**: 9 connected holdouts (27 turns, every criterion met) and the full read-only regression (180 turns, every pilot gate met, read only). By the pre-registered criteria the PR is ready to merge. Not run: CF02 and HC09 (injection) on a production agent, and the sandboxed shell condition (deferred by the owner to Verdikta Agents' coding sandbox). |
 | 2026-10-03 | **Round 7 pre-registered** (section above, `connected-gates-round7.json`, `connected-multiturn-cases.json`, `openclaw/run-multiturn.sh`): reading rule 7 now holds for the whole conversation, and `drafting.md` covers chat-sized inputs. Four two-turn cases x 3 plus a 19-case single-turn regression on production `main`, round-1 thresholds where they apply, and a new conversation-reuse gate. No round-7 model turn had taken place. |
+| 2026-10-03 | **Round 7 probe stopped the round** (failed, as pre-registered). MT01: the skill was never opened; `curl --location` and Codex's web tool fetched the redirected page; C1-C4 were 'Verified' in both turns. MT03 handled the second turn without a verdict for C2 or C4. A trigger miss on CF03, not a test of the new rule. The other 39 turns were not run. |
