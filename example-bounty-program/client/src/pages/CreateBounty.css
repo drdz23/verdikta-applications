@@ -1128,6 +1128,7 @@
 /* Import of a downloaded work-order draft */
 .work-order-import { border: 1px solid var(--border-color, #d0d7de); border-radius: 8px; padding: 1rem; margin: 0 0 1.5rem; }
 .work-order-import h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+.work-order-import p { margin: 0 0 0.5rem; }
 .work-order-import label { display: block; margin: 0.5rem 0; }
 .work-order-import textarea { width: 100%; font-family: monospace; font-size: 0.8rem; }
 .work-order-summary code { word-break: break-all; font-size: 0.8rem; }

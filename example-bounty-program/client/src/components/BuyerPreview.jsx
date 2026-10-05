@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { preview } from '../../../../skills/verdikta-discover/scripts/preview-core.mjs';
+import { preview, previewText } from '../../../../skills/verdikta-discover/scripts/preview-core.mjs';
 import claims from '../../../../skills/verdikta-discover/examples/source-check-v1.request.json';
 import pack from '../../../../skills/verdikta-discover/examples/evidence-pack-v1.request.json';
 import { workOrderInputKind } from '../utils/buyerPreviewInput.js';
+import { pastedJsonText } from '../utils/pastedJson.js';
 import { Link } from 'react-router-dom';
 import './BuyerPreview.css';
 
@@ -18,16 +19,19 @@ export default function BuyerPreview() {
   const [importHint, setImportHint] = useState(null);
   function assess(event) {
     event.preventDefault(); setError(''); setAssessment(null); setImportHint(null);
+    const json = pastedJsonText(text);
     let request;
-    try { request = JSON.parse(text); } catch { setError('Enter a valid JSON request. Nothing has been uploaded.'); return; }
+    try { request = JSON.parse(json); } catch { setError('Enter a valid JSON request. Nothing has been uploaded.'); return; }
     const inputKind = workOrderInputKind(request);
-    if (inputKind) { setImportHint(inputKind); return; }
+    if (inputKind) { setImportHint({ kind: inputKind, text: json }); return; }
     try { setAssessment(preview({ template_id: kind, request, sharing_authorized: sharing ? true : undefined, local_sufficient: local, procurement_mode: mode, targetHunter: mode === 'TARGETED' ? target : null })); }
     catch { setError('Enter a valid JSON request. Nothing has been uploaded.'); }
   }
+  // The saved file holds exactly the text the skill's script prints for the same input, so both have the same SHA-256.
   function download() {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(assessment, null, 2)], { type: 'application/json' }));
-    const a = document.createElement('a'); a.href = url; a.download = 'work-order-draft.json'; a.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(new Blob([previewText(assessment)], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = `work-order-draft-${assessment.draft.request.task_id}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return <section className="agents-section buyer-preview" id="buyer-preview">
     <h2>Need outside help for a bounded digital task?</h2>
@@ -35,6 +39,8 @@ export default function BuyerPreview() {
       No wallet, API key, upload or spending is required. This form runs locally in your browser.</p>
     <p>Verdikta provides independently evaluated settlement. Commissioning later requires a real supplier agreement,
       explicit funding authorization and a separate transaction review. Supplier availability, price and delivery time are unknown.</p>
+    <p>Have an assessment input from an agent, or a draft saved here? It belongs in the <Link to="/create">Create Bounty</Link> import,
+      which derives and checks the draft with the same code. If you paste it below, the preview offers to take it there.</p>
     <form onSubmit={assess}>
       <label>Service template <select value={kind} onChange={e => {
         setKind(e.target.value); setText(JSON.stringify(e.target.value === 'source-check-v1' ? claims : pack, null, 2)); setAssessment(null);
@@ -60,9 +66,9 @@ export default function BuyerPreview() {
     </form>
     {error && <p role="alert">{error}</p>}
     {importHint && <p role="alert">
-      This is {importHint === 'draft' ? 'a saved work-order draft' : 'an assessment input from an agent'}, not a request.
-      Import it on the <Link to="/create">Create Bounty</Link> page under "Import a work-order draft", which checks it with the same code
-      and shows its draft SHA-256. Nothing has been uploaded.
+      This is {importHint.kind === 'draft' ? 'a saved work-order draft' : 'an assessment input from an agent'}, not a request.
+      Open it on the <Link to="/create" state={{ workOrderPaste: importHint.text }}>Create Bounty</Link> page: it goes into
+      "Import a work-order draft" there, which checks it with the same code and shows its draft SHA-256. Nothing has been uploaded.
     </p>}
     {assessment && <div aria-live="polite">
       <h3>{{PREVIEW: 'Draft ready for review', HANDOFF_REQUESTED: 'Ready for a separate funding review', NEEDS_SCOPE: 'More information needed', LOCAL: 'Handle this task locally', UNSUITABLE: 'Not suitable for external work'}[assessment.decision]}</h3>
