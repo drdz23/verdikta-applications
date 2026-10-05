@@ -1,0 +1,7 @@
+# publish.sh stages an explicit file list. This file guards a direct `clawhub publish` or `clawhub sync`
+# of this folder: tests and the repository-only maintainer tools are never published.
+scripts/test/
+scripts/compile-contracts.js
+scripts/sync_contract_assets.js
+scripts/node_modules/
+publish.sh
