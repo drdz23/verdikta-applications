@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { preview } from '../../../../skills/verdikta-discover/scripts/preview-core.mjs';
 import claims from '../../../../skills/verdikta-discover/examples/source-check-v1.request.json';
 import pack from '../../../../skills/verdikta-discover/examples/evidence-pack-v1.request.json';
+import { workOrderInputKind } from '../utils/buyerPreviewInput.js';
+import { Link } from 'react-router-dom';
 import './BuyerPreview.css';
 
 export default function BuyerPreview() {
@@ -13,9 +15,14 @@ export default function BuyerPreview() {
   const [local, setLocal] = useState(false);
   const [assessment, setAssessment] = useState(null);
   const [error, setError] = useState('');
+  const [importHint, setImportHint] = useState(null);
   function assess(event) {
-    event.preventDefault(); setError(''); setAssessment(null);
-    try { setAssessment(preview({ template_id: kind, request: JSON.parse(text), sharing_authorized: sharing ? true : undefined, local_sufficient: local, procurement_mode: mode, targetHunter: mode === 'TARGETED' ? target : null })); }
+    event.preventDefault(); setError(''); setAssessment(null); setImportHint(null);
+    let request;
+    try { request = JSON.parse(text); } catch { setError('Enter a valid JSON request. Nothing has been uploaded.'); return; }
+    const inputKind = workOrderInputKind(request);
+    if (inputKind) { setImportHint(inputKind); return; }
+    try { setAssessment(preview({ template_id: kind, request, sharing_authorized: sharing ? true : undefined, local_sufficient: local, procurement_mode: mode, targetHunter: mode === 'TARGETED' ? target : null })); }
     catch { setError('Enter a valid JSON request. Nothing has been uploaded.'); }
   }
   function download() {
@@ -45,13 +52,18 @@ export default function BuyerPreview() {
       </label>}
       <p>The prefilled request is synthetic and cannot be commissioned. Replace it with your bounded request. A documented unresolved answer is valid; fabricated evidence is not.</p>
       <label>Request JSON
-        <textarea rows={14} value={text} onChange={e => { setText(e.target.value); setAssessment(null); }} spellCheck={false} />
+        <textarea rows={14} value={text} onChange={e => { setText(e.target.value); setAssessment(null); setImportHint(null); }} spellCheck={false} />
       </label>
       <label><input type="checkbox" checked={sharing} onChange={e => { setSharing(e.target.checked); setAssessment(null); }} /> Inputs are public, non-sensitive and approved for external sharing. This grants no spending authority.</label>
       <label><input type="checkbox" checked={local} onChange={e => { setLocal(e.target.checked); setAssessment(null); }} /> My available local tools and sources already meet the need.</label>
       <button type="submit" className="btn btn-primary">Preview a work order</button>
     </form>
     {error && <p role="alert">{error}</p>}
+    {importHint && <p role="alert">
+      This is {importHint === 'draft' ? 'a saved work-order draft' : 'an assessment input from an agent'}, not a request.
+      Import it on the <Link to="/create">Create Bounty</Link> page under "Import a work-order draft", which checks it with the same code
+      and shows its draft SHA-256. Nothing has been uploaded.
+    </p>}
     {assessment && <div aria-live="polite">
       <h3>{{PREVIEW: 'Draft ready for review', HANDOFF_REQUESTED: 'Ready for a separate funding review', NEEDS_SCOPE: 'More information needed', LOCAL: 'Handle this task locally', UNSUITABLE: 'Not suitable for external work'}[assessment.decision]}</h3>
       <p>Draft only — no quote or spending authorization.</p>

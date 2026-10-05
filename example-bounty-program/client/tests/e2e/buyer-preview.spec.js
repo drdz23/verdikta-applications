@@ -48,6 +48,25 @@ test('invalid JSON remains local and recoverable',async({page})=>{
   await expect(panel.getByRole('alert')).toHaveText('Enter a valid JSON request. Nothing has been uploaded.');
 });
 
+test('an assessment input or saved draft is sent to the Create Bounty import, not previewed as a request',async({page})=>{
+  const assessment=JSON.parse(await readFile(new URL('../../../../skills/verdikta-discover/examples/assessment.json',import.meta.url),'utf8'));
+  await page.goto('/agents');const panel=page.locator('#buyer-preview');
+  await panel.getByRole('textbox').fill(JSON.stringify(assessment));await panel.getByRole('button',{name:'Preview a work order'}).click();
+  await expect(panel.getByRole('alert')).toContainText('This is an assessment input from an agent, not a request.');
+  await expect(panel.getByRole('heading',{name:/Draft ready|More information|Handle this task/})).toHaveCount(0);
+  await panel.getByRole('checkbox',{name:/Inputs are public/}).check();
+  await panel.getByRole('combobox',{name:'Supplier selection'}).selectOption('OPEN');
+  await panel.getByRole('textbox').fill(JSON.stringify(assessment.request));await panel.getByRole('button',{name:'Preview a work order'}).click();
+  await expect(panel.getByRole('heading',{name:'Draft ready for review'})).toBeVisible();
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  const download=page.waitForEvent('download');await panel.getByRole('button',{name:'Save draft locally'}).click();
+  await panel.getByRole('textbox').fill(await readFile(await (await download).path(),'utf8'));await panel.getByRole('button',{name:'Preview a work order'}).click();
+  await expect(panel.getByRole('alert')).toContainText('This is a saved work-order draft, not a request.');
+  await panel.getByRole('link',{name:'Create Bounty'}).click();
+  await expect(page).toHaveURL(/\/create$/);
+  await expect(page.locator('.work-order-import')).toBeVisible();
+});
+
 test('targeted preview does not silently open a missing supplier',async({page})=>{
   await page.goto('/agents');const panel=page.locator('#buyer-preview');
   await panel.getByRole('checkbox',{name:/Inputs are public/}).check();
