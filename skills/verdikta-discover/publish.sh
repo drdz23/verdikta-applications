@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Build a clean bundle for ClawHub publishing.
+# Build a clean bundle of verdikta-discover for ClawHub publishing.
 # Usage: ./publish.sh [--dry-run]
 #
-# Assembles only the files ClawHub needs into a temporary staging directory,
-# then runs clawhub publish. Leaves out the tests, node_modules, .gitignore,
-# scripts/.env.example (the ClawHub CLI never uploads dot-files, and nothing
-# reads it at run time) and two repository-only maintainer tools,
-# compile-contracts.js and sync_contract_assets.js, which work only inside a
-# full repository checkout.
+# Stages only what the skill needs into a temporary directory: SKILL.md,
+# _meta.json, package.json and package-lock.json, references/, scripts/ (with
+# the self-contained preview.bundle.mjs and its third-party notices),
+# templates/, schemas/ and examples/. Leaves out tests/ (evaluation records and
+# prompt-injection test pages) and node_modules/. Then runs clawhub publish.
+#
+# The version is _meta.json's; package.json must carry the same one.
 #
 # --dry-run stages and lists the files, then runs `clawhub publish --dry-run`:
 # the CLI hashes the files locally and asks the registry which version it would
@@ -32,16 +33,16 @@ if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$INSTALLED_VERSION" | sort -V | head 
 fi
 
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="${VERSION:-1.6.0}"
 DRY_RUN=""
 
 if [[ "${1:-}" == "--dry-run" ]]; then
   DRY_RUN="true"
 fi
 
-META_VERSION="$(node -p 'require(process.argv[1]).version' "$SKILL_DIR/_meta.json")"
-if [[ "$VERSION" != "$META_VERSION" ]]; then
-  echo "Error: VERSION $VERSION differs from _meta.json version $META_VERSION." >&2
+VERSION="$(node -p 'require(process.argv[1]).version' "$SKILL_DIR/_meta.json")"
+PACKAGE_VERSION="$(node -p 'require(process.argv[1]).version' "$SKILL_DIR/package.json")"
+if [[ "$VERSION" != "$PACKAGE_VERSION" ]]; then
+  echo "Error: _meta.json version $VERSION differs from package.json version $PACKAGE_VERSION." >&2
   exit 1
 fi
 
@@ -57,33 +58,23 @@ if git -C "$SKILL_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 fi
 
-STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/verdikta-bounties-onboarding-stage.XXXXXX")"
+STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/verdikta-discover-stage.XXXXXX")"
 trap 'rm -rf "${STAGE_DIR:?}"' EXIT
-mkdir -p "$STAGE_DIR/scripts" "$STAGE_DIR/references" "$STAGE_DIR/examples"
+mkdir -p "$STAGE_DIR/references" "$STAGE_DIR/scripts" "$STAGE_DIR/templates" "$STAGE_DIR/schemas" "$STAGE_DIR/examples"
 
-cp "$SKILL_DIR/SKILL.md" "$STAGE_DIR/"
-cp "$SKILL_DIR/README.md" "$STAGE_DIR/"
-cp "$SKILL_DIR/_meta.json" "$STAGE_DIR/"
-
-# Scripts: source files, package.json and the lockfile
-for f in "$SKILL_DIR"/scripts/*.js "$SKILL_DIR"/scripts/*.cjs "$SKILL_DIR"/scripts/bounty-escrow.abi.json "$SKILL_DIR"/scripts/deployments.json "$SKILL_DIR"/scripts/package-lock.json "$SKILL_DIR"/scripts/package.json; do
-  case "$(basename "$f")" in
-    compile-contracts.js|sync_contract_assets.js) continue ;;
-  esac
-  [ -f "$f" ] && cp "$f" "$STAGE_DIR/scripts/"
-done
-
-cp "$SKILL_DIR"/examples/*.json "$STAGE_DIR/examples/"
-
-# Reference docs
+cp "$SKILL_DIR/SKILL.md" "$SKILL_DIR/_meta.json" "$SKILL_DIR/package.json" "$SKILL_DIR/package-lock.json" "$STAGE_DIR/"
 cp "$SKILL_DIR"/references/*.md "$STAGE_DIR/references/"
+cp "$SKILL_DIR"/scripts/*.mjs "$SKILL_DIR/scripts/preview.bundle.NOTICES.txt" "$STAGE_DIR/scripts/"
+cp "$SKILL_DIR"/templates/*.json "$STAGE_DIR/templates/"
+cp "$SKILL_DIR"/schemas/*.json "$STAGE_DIR/schemas/"
+cp "$SKILL_DIR"/examples/*.json "$SKILL_DIR"/examples/*.txt "$STAGE_DIR/examples/"
 
 echo "Staged files:"
 find "$STAGE_DIR" -type f | sort | sed "s|$STAGE_DIR/||"
 echo ""
 echo "Total: $(find "$STAGE_DIR" -type f | wc -l | tr -d ' ') files"
 
-PUBLISH_ARGS=("$STAGE_DIR" --slug verdikta-bounties-onboarding --name "Verdikta Bounties Onboarding" --version "$VERSION" --tags latest)
+PUBLISH_ARGS=("$STAGE_DIR" --slug verdikta-discover --name "Verdikta Discover" --version "$VERSION" --tags latest)
 
 if [[ -n "$DRY_RUN" ]]; then
   echo ""

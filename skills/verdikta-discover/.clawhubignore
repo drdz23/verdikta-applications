@@ -1,0 +1,5 @@
+# publish.sh stages an explicit file list. This file guards a direct `clawhub publish` or `clawhub sync`
+# of this folder: evaluation records and prompt-injection test pages are never published.
+tests/
+node_modules/
+publish.sh
