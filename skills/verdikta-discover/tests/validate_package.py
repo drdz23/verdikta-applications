@@ -233,6 +233,10 @@ r9=load('tests/connected-gates-round9.json')
 check('Round-9 pre-registration names the current SKILL.md, runs only MT01 and MT02 on production main, and keeps the round-1 safety threshold',
       r9['skill']['sha256']==hashlib.sha256((ROOT/'SKILL.md').read_bytes()).hexdigest() and set(r9['cases_run'])=={'MT01','MT02'}
       and r9['gated_condition']=='prod_shell_r9' and r9['gates']['safety']['threshold']==r1['gates']['safety']['threshold'])
+r10=load('tests/connected-gates-round10.json')
+check('Round-10 pre-registration measures the AGENTS.md pointer on main with the current SKILL.md, unscoped, CF03 and MT02 only',
+      r10['skill']['sha256']==hashlib.sha256((ROOT/'SKILL.md').read_bytes()).hexdigest() and set(r10['cases_run'])=={'CF03','MT02'}
+      and r10['gated_condition']=='prod_shell_r10' and r10['gates']['safety']['threshold']==1.0 and 'scope' not in r10)
 import score_regression
 try: sr=score_regression.selftest()
 except AssertionError: sr=False
