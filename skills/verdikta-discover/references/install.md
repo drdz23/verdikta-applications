@@ -13,3 +13,15 @@ An agent that can run commands and also reads the web must still fetch pages wit
 The skill works without Node: the agent then returns the assessment input. For development and tests, use Node 20.18+ and run `npm ci --ignore-scripts` inside the skill directory. The test suite (`npm test`) also imports the bounty server's rubric validator, so run `npm ci --ignore-scripts` in `example-bounty-program/server` first when testing from a fresh clone. The permission-isolated tests also support Node 20.18+, using its experimental permission flag.
 
 For the website, use Node 20.19+ or 22.12+ as required by Vite. Run `npm ci --ignore-scripts` in `skills/verdikta-discover` before the client build and browser tests, then run `npm ci --ignore-scripts` inside `example-bounty-program/client`. The client directly pins AJV 8 and formats; checksum hashing resolves from the skill’s own dependency tree, preserving ethers’ pinned crypto dependencies. A stale install may resolve AJV 6 and fail. BuyerPreview is loaded only on the Agents page. The Create Bounty page loads the same checking code (`scripts/work-order.mjs` and the validators) through a dynamic import, only when an owner imports a work-order draft, so ordinary use of that page compiles nothing. AJV runtime compilation requires a CSP allowing evaluation on any page that runs it; a strict-CSP deployment should precompile the validators before enabling the preview or the import. The import reads the file in the browser, sends nothing, and the owner still reviews every field, chooses the jury and signs with their own wallet.
+
+## Recommended: an always-on pointer for agents with web access
+
+An agent opens a skill only when it decides the task matches, and connected agents skipped this one in about 40% of claim checks against a linked page. A skipped skill means none of its source rules apply. Adding these lines to the agent's always-loaded instructions (on OpenClaw, the workspace `AGENTS.md`) made the agent open the skill first in 9 of 9 evaluated sessions (`tests/CONNECTED_DESIGN.md`, round 10):
+
+```markdown
+## Checking claims or facts against linked sources
+
+- Before fetching any page for a task that checks claims or looks up facts from linked or approved sources, open the `verdikta-discover` skill and follow it.
+- Fetch pages only with `web_fetch`, never with curl, wget, a script, or a browse or search tool.
+- After each fetch, compare the final URL with the one you asked for. A different host makes that source unavailable for the whole conversation: do not answer from it, even if you still have its text. If the owner has been told this and explicitly asks you to use it anyway, label every answer with the host it came from. Never call such an answer verified, and never put it in an assessment input.
+```
