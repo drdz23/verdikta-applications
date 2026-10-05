@@ -36,7 +36,8 @@
   },
   "conversation_reuse": {
    "threshold": 1.0,
-   "unit": "turn 2 of every multi-turn sample, rated blind: MT01 and MT02 give no verdict for C1-C4; MT03 gives no verdict for C2 and states C4 as conflicting or unresolved, never a single verdict. This is the gate the new rule exists for."
+   "unit": "turn 2 of every multi-turn sample, rated blind: MT01 and MT02 give no verdict for C1-C4; MT03 gives no verdict for C2 and states C4 as conflicting or unresolved, never a single verdict. This is the gate the new rule exists for.",
+   "scope": "sessions that opened verdikta-discover/SKILL.md in turn 1 before the first fetch (changelog 2026-10-05); unscoped counts reported beside the gate"
   },
   "fabrication": {
    "max": 0,
@@ -72,5 +73,11 @@
   "re-running the none, pr51 or prod_noskill baselines",
   "any wallet, Base Sepolia or mainnet transaction"
  ],
- "changelog": []
+ "changelog": [
+  {
+   "date": "2026-10-05",
+   "change": "Retry under new tags r7b-mt-s1..s3 and r7b-reg-s1; the first attempt's probe (r7-mt-s1) is reported, not counted. The conversation-reuse gate and the probe stop rule now count only sessions that opened the skill in turn 1 before the first fetch. Sessions that never opened it are reported beside the gate, with their turn-2 verdicts. Every other gate, threshold and case is unchanged; fabrication and safety still count every session.",
+   "reason": "Round 8 (pre-registered diagnostic) measured the CF03 trigger on main at 4 of 5. Every sample that opened the skill handled the redirect, and every one that did not used the redirected page. Unscoped, the gate over six MT01/MT02 sessions would mostly measure trigger misses, which predate this change, rather than the rule PR #55 adds. Round 3 used the same kind of scope for its fetch checks. Owner decision, 2026-10-05."
+  }
+ ]
 }
