@@ -1,6 +1,6 @@
 # Install and deploy the preview
 
-Obtain the complete [skill directory](https://github.com/verdikta/verdikta-applications/tree/main/skills/verdikta-discover) and [entrypoint](https://raw.githubusercontent.com/verdikta/verdikta-applications/refs/heads/main/skills/verdikta-discover/SKILL.md) from main. Pin the commit you reviewed; branch URLs are mutable. The ClawHub release (`clawhub install verdikta-discover`) has the same files without `tests/`; the test and evaluation files this page names are in the repository. Copy the complete directory, or install the release, to the host runtime’s skill location and follow that runtime’s loader instructions. Native loading has been verified on OpenClaw 2026.8.33 (see `tests/EVALUATION_PROTOCOL.md`). Hermes Agent needs its own copy (section "Hermes Agent" below). Its first evaluated round passed every gate but one, so Hermes is not yet called verified.
+Obtain the complete [skill directory](https://github.com/verdikta/verdikta-applications/tree/main/skills/verdikta-discover) and [entrypoint](https://raw.githubusercontent.com/verdikta/verdikta-applications/refs/heads/main/skills/verdikta-discover/SKILL.md) from main. Pin the commit you reviewed; branch URLs are mutable. The ClawHub release (`clawhub install verdikta-discover`) has the same files without `tests/`; the test and evaluation files this page names are in the repository. Copy the complete directory, or install the release, to the host runtime’s skill location and follow that runtime’s loader instructions. Native loading has been verified on OpenClaw 2026.8.33 (see `tests/EVALUATION_PROTOCOL.md`). On Hermes Agent the skill needs its own copy; it has been verified there with that copy (section "Hermes Agent" below; `tests/CONNECTED_DESIGN.md`, Hermes rounds 1 and 2).
 
 Host configuration. Primary posture: an agent with web fetch that follows the hard rules in `SKILL.md`, with no signer, no transactional skill, no wallet environment and read-only file tools. Reading task sources needs no owner approval step; every URL is screened first with `scripts/url-screen.mjs` (also `node scripts/screen.mjs url <url>`). The screens are pure functions: `screenUrl` (https only; no credentials, port, IP literal, internal hostname or shortener; no query string, secret-shaped value or task text in a URL the agent composed), `screenRedirect` (a final origin that differs from the requested one makes the source unavailable), `screenContent` (advisory heuristics for text that tries to instruct the agent) and `isPublicIp` (for a host to check what a name resolved to). They reduce risk and do not make a page trustworthy: a URL screen cannot see an injection inside a reputable page, and the content screen misses much of what a human would catch (see `tests/EVALUATION_PROTOCOL.md` for measured rates). The limits on what the agent can do (no secrets, no spending tools, no uploads) are the real control.
 
@@ -39,15 +39,17 @@ Install it from the repository (Hermes' install-time scanner rates it safe), or 
 hermes skills install verdikta/verdikta-applications/skills/hermes/verdikta-discover
 ```
 
-Evaluation (`tests/CONNECTED_DESIGN.md`, Hermes round 1):
-- **Setup.** Hermes main `85db7c3a`, gpt-5.6-terra, this configuration and the pointer below.
-- **What passed.** Every gate passed except one:
+Evaluation (`tests/CONNECTED_DESIGN.md`, Hermes rounds 1 and 2):
+- **Setup.** Hermes main `85db7c3a`, gpt-5.6-terra, the configuration below and the pointer below.
+- **Scope.** Verified for those cases.
+- **Round 2** passed every pre-registered gate on 9 fresh sessions:
   - the skill was opened first in 6 of 6 claim checks against a linked page;
   - the redirect was handled in 6 of 6;
   - answers given at the owner's insistence were labelled in 3 of 3;
   - there were no verdicts from the unavailable source;
-  - every returned input was fundable.
-- **The failing gate: safety, 6 of 9 sessions.** Three agents wrote their own assessment input as a file inside the sandbox; see the Docker notes below. No agent fetched with `web_extract`, `web_search` or the shell, and none wrote a skill, memory or cron entry.
+  - every returned input was fundable;
+  - no agent fetched with `web_extract`, `web_search` or the shell, and none wrote a skill, memory or cron entry.
+- **Round 1** failed only a strict "no file written" rule. Round 2's rule allows writes inside the session sandbox, and 2 of its 9 sessions wrote their own input there (see the Docker notes below).
 
 Host configuration, in `~/.hermes/config.yaml`:
 
