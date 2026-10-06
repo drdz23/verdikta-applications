@@ -52,7 +52,7 @@ export function hermesSkillText(openclawText) {
 }
 
 // The release file set, as in skills/verdikta-discover/publish.sh (without _meta.json).
-const ROOT_FILES = ['SKILL.md', 'package.json', 'package-lock.json'];
+const ROOT_FILES = ['SKILL.md', 'CHANGELOG.md', 'package.json', 'package-lock.json'];
 const DIRS = [['references', /\.md$/], ['scripts', /\.mjs$|^preview\.bundle\.NOTICES\.txt$/], ['templates', /\.json$/],
   ['schemas', /\.json$/], ['examples', /\.json$|\.txt$/]];
 
