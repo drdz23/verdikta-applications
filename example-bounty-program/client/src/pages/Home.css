@@ -577,6 +577,16 @@
   color: white;
 }
 
+.home .badge-custom-class {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: var(--gray-200);
+  color: var(--text);
+}
+
 .home .badge-windowed {
   display: inline-block;
   padding: 2px 8px;

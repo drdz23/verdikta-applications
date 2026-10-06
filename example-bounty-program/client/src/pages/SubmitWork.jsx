@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import JuryModels from '../components/JuryModels';
+import ClassTrustNote from '../components/ClassTrustNote';
 import { apiService } from '../services/api';
 import { getContractService } from '../services/contractService';
 import { config, currentNetwork } from '../config';
@@ -722,7 +723,9 @@ function SubmitWork({ walletState }) {
           evaluationCid={job.evaluationCid}
           title="Who will evaluate your submission"
           description="These AI models will independently score your work; the final score is a weighted average. Review them before you submit."
-        />
+        >
+          <ClassTrustNote jobId={bountyId} classId={job.classId ?? 128} />
+        </JuryModels>
       )}
 
       <form onSubmit={handleSubmit} className="submit-form">

@@ -631,6 +631,19 @@ async uploadRubric(rubricJson, classId = 128) {
   },
 
   /**
+   * Live arbiter coverage for any class (listed in the registry or not).
+   * Server route: GET /api/classes/:classId/coverage[?maxOracleFee=]
+   * @param {number} classId
+   * @param {string} [maxOracleFee] decimal ETH or integer wei
+   */
+  async getClassCoverage(classId, maxOracleFee) {
+    const response = await api.get(`/api/classes/${classId}/coverage`, {
+      params: maxOracleFee ? { maxOracleFee } : undefined
+    });
+    return response.data;
+  },
+
+  /**
    * Pre-validate an evaluation CID before creating a bounty
    * @param {Object} data - { evaluationCid, classId }
    * @returns {Object} - { valid, errors[], warnings[] }

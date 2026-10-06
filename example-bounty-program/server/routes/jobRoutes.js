@@ -21,6 +21,7 @@ const archiveGenerator = require('../utils/archiveGenerator');
 const { validateRubric, validateJuryNodes, normalizeBountyPayments, validateProcurement, isValidFileType, MAX_FILE_SIZE,
         oracleUnreadableReason, detectBinaryContainer, ALLOWED_ZIP_BASED_EXTENSIONS,
         parseFeeToWei, extractEvaluationWarnings } = require('../utils/validation');
+const { lookupClass, registryModelMatcher, checkJuryAgainstClass, checkClassCoverage } = require('../utils/classPolicy');
 const { getVerdiktaService, isVerdiktaServiceAvailable } = require('../utils/verdiktaService');
 const { validateBounty, IssueSeverity, IssueType, chainStatusIssue } = require('../utils/bountyValidator');
 const { getContractService, RESOLVE_GAS_LIMIT_FALLBACK, RESOLVE_GAS_NOTE } = require('../utils/contractService');
@@ -239,46 +240,6 @@ function stringifyErr(e) {
   return e.message || String(e);
 }
 
-function normalizeProviderName(provider) {
-  return String(provider || '').trim().toLowerCase();
-}
-
-function validateJuryModelsAgainstClass(juryNodes, classId, classMap) {
-  if (!classMap || typeof classMap.getClass !== 'function') {
-    return {
-      valid: false,
-      misconfiguration: true,
-      error: 'Class map unavailable for strict jury validation'
-    };
-  }
-
-  const classInfo = classMap.getClass(Number(classId));
-  if (!classInfo) {
-    return { valid: false, error: `Class ${classId} not found` };
-  }
-
-  if (classInfo.status !== 'ACTIVE') {
-    return { valid: false, error: `Class ${classId} is not ACTIVE (status=${classInfo.status})` };
-  }
-
-  const available = new Set((classInfo.models || []).map(m => `${normalizeProviderName(m.provider)}/${m.model}`));
-  const invalidNodes = [];
-
-  for (const node of juryNodes || []) {
-    const key = `${normalizeProviderName(node.provider)}/${node.model}`;
-    if (!available.has(key)) {
-      invalidNodes.push({ provider: node.provider, model: node.model });
-    }
-  }
-
-  return {
-    valid: invalidNodes.length === 0,
-    classInfo,
-    invalidNodes,
-    allowedModels: Array.from(available).sort()
-  };
-}
-
 // Direct, minimal JSON‑pin helper (Pinata). Expects RAW JWT in env; we add "Bearer ".
 const PIN_TIMEOUT_MS = Number(process.env.PIN_TIMEOUT_MS || 20000);
 function withTimeout(p, ms, label='operation') {
@@ -426,8 +387,21 @@ router.post('/create', async (req, res) => {
         details: 'rubricJson must be a JSON object, received a string. The request body is already JSON — do not pre-stringify the rubric. Pass it as a native object, e.g. "rubricJson": { "criteria": [...] }, not "rubricJson": "{\\"criteria\\":[...]}". To debug rubric shape without side effects, use POST /api/jobs/rubric/validate.'
       });
     }
-    // Validate jury configuration
-    const juryValidation = validateJuryNodes(juryNodes);
+    // ---- Class + jury (see utils/classPolicy.js) ----
+    // Classes are permissionless: a class outside the @verdikta/common registry is
+    // allowed with warnings. Refusals are limited to a jury the registry rules out
+    // for a listed class, and to a class no arbiter could serve.
+    const classIdNum = Number(classId);
+    if (!Number.isSafeInteger(classIdNum) || classIdNum < 0) {
+      return res.status(400).json({ error: 'Invalid classId', details: 'classId must be a non-negative integer' });
+    }
+    const { listed: classListed } = lookupClass(classIdNum);
+    // Model-id format is a typo heuristic: ids the registry lists exactly skip it, and
+    // for a class outside the registry its arbiter operators define the ids, so it only warns.
+    const juryValidation = validateJuryNodes(juryNodes, {
+      modelFormat: classListed === false ? 'warn' : 'error',
+      isRegistryModel: registryModelMatcher(classIdNum) || undefined
+    });
     if (!juryValidation.valid) {
       return res.status(400).json({
         error: 'Invalid jury configuration',
@@ -436,38 +410,39 @@ router.post('/create', async (req, res) => {
       });
     }
 
-    // Strict: each provider/model must be currently supported by @verdikta/common class map.
-    // Fail-open on infra errors (classMap can't load) — an unavailable dependency must not
-    // take down bounty creation. Fail-closed only on an actually-unsupported jury model.
-    let classMap = null;
-    try {
-      const common = require('@verdikta/common');
-      classMap = common?.classMap;
-      if (!classMap || typeof classMap.getClass !== 'function') {
-        throw new Error('Missing or invalid classMap export from @verdikta/common');
-      }
-    } catch (e) {
-      logger.warn('[jobs/create] classMap unavailable — skipping strict jury validation', { msg: e.message });
-      classMap = null;
+    const juryCheck = checkJuryAgainstClass(juryNodes, classIdNum);
+    if (juryCheck.errors.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid jury configuration',
+        details: juryCheck.invalidNodes.length > 0
+          ? 'One or more jury models are not supported for this class'
+          : juryCheck.errors[0],
+        classId: classIdNum,
+        invalidNodes: juryCheck.invalidNodes,
+        allowedModels: juryCheck.allowedModels || []
+      });
     }
 
-    if (classMap) {
-      const strictJuryCheck = validateJuryModelsAgainstClass(juryNodes, classId, classMap);
-      if (strictJuryCheck.misconfiguration) {
-        // classMap present but not usable for this check — treat as infra, fail-open.
-        logger.warn('[jobs/create] strict jury validation unavailable — skipping', {
-          classId: Number(classId),
-          details: strictJuryCheck.error
-        });
-      } else if (!strictJuryCheck.valid) {
-        return res.status(400).json({
-          error: 'Invalid jury configuration',
-          details: strictJuryCheck.error || 'One or more jury models are not supported for this class',
-          classId: Number(classId),
-          invalidNodes: strictJuryCheck.invalidNodes || [],
-          allowedModels: strictJuryCheck.allowedModels || []
-        });
-      }
+    const coverageCheck = await checkClassCoverage(classIdNum, oracleSettings, { creator });
+    if (coverageCheck.refusal) {
+      return res.status(400).json({
+        error: 'No arbiters can serve this class',
+        code: 'CLASS_UNSERVABLE',
+        details: coverageCheck.refusal,
+        classId: classIdNum,
+        coverage: coverageCheck.coverage
+      });
+    }
+
+    const classPolicy = {
+      classId: classIdNum,
+      listed: juryCheck.listed,
+      juryModelsVerified: juryCheck.juryModelsVerified,
+      coverage: coverageCheck.coverage,
+      warnings: [...juryValidation.warnings, ...juryCheck.warnings, ...coverageCheck.warnings]
+    };
+    if (classPolicy.warnings.length > 0) {
+      logger.info('[jobs/create] class warnings', { classId: classIdNum, listed: classPolicy.listed, warnings: classPolicy.warnings });
     }
 
     if (!rubricJson && !rubricCidIn) {
@@ -637,6 +612,7 @@ router.post('/create', async (req, res) => {
             oracleSettings: jobOracleSettings(existing)
           },
           onChain: buildCreateBountyTx(existing),
+          classPolicy,
           message: 'Reusing existing job (same evaluation package).'
         });
       }
@@ -658,7 +634,7 @@ router.post('/create', async (req, res) => {
       threshold: Number(threshold),
       rubricCid,
       evaluationCid,
-      classId: Number(classId),
+      classId: classIdNum,
       juryNodes,
       iterations: Number(iterations),
       submissionOpenTime,
@@ -692,6 +668,9 @@ router.post('/create', async (req, res) => {
       },
       // Exact createBounty(CreateParams) struct + calldata matching this record.
       onChain: buildCreateBountyTx(job),
+      // Registry status, live arbiter coverage, and anything the creator should
+      // know before funding (e.g. a class outside the registry).
+      classPolicy,
       message: 'Job created successfully! Now call createBounty on-chain (see onChain.transaction) and PATCH /api/jobs/:jobId/bountyId to link.'
     });
 
@@ -2232,7 +2211,7 @@ router.delete('/admin/:jobId', async (req, res) => {
  * Body: { rubricJson: object }
  * Response: { valid: boolean, errors: string[] }
  */
-router.post('/rubric/validate', (req, res) => {
+router.post('/rubric/validate', async (req, res) => {
   const { rubricJson } = req.body || {};
 
   if (rubricJson === undefined || rubricJson === null) {
@@ -2271,53 +2250,60 @@ router.post('/rubric/validate', (req, res) => {
   const errors = [...rubricResult.errors];
   const { juryNodes, classId } = req.body || {};
   const tips = [];
+  const warnings = [];
   let allowedModels = null;
   let juryWasChecked = false;
+  let classListed;
+  let coverage;
 
   if (juryNodes !== undefined && juryNodes !== null) {
     juryWasChecked = true;
-    const juryResult = validateJuryNodes(juryNodes);
-    errors.push(...juryResult.errors);
-
     const classIdProvided = classId !== undefined && classId !== null;
     const classIdValid = typeof classId === 'number' && Number.isInteger(classId) && classId >= 0;
     if (classIdProvided && !classIdValid) {
       errors.push(`classId must be a non-negative integer (received ${typeof classId})`);
     }
+    // Same rule as /jobs/create: ids the registry lists exactly skip the model-id
+    // format heuristic, and for a class outside the registry it only warns.
+    if (classIdValid) classListed = lookupClass(classId).listed;
+    const juryResult = validateJuryNodes(juryNodes, {
+      modelFormat: classListed === false ? 'warn' : 'error',
+      isRegistryModel: (classIdValid && registryModelMatcher(classId)) || undefined
+    });
+    errors.push(...juryResult.errors);
+    warnings.push(...juryResult.warnings);
 
-    // Availability check (issue #16 follow-up): mirror the classMap gate that
-    // /jobs/create applies, so a clean bill here means the jury is create-safe —
-    // not merely well-formed. Requires a valid classId to know which class to
-    // check against. Fail-open on infra errors (classMap can't load), exactly
-    // like /jobs/create; only a genuinely unsupported model is a hard error.
+    // Availability check (issue #16 follow-up), the same class policy /jobs/create
+    // applies (utils/classPolicy.js), so a clean bill here means the jury and class
+    // are create-safe, not merely well-formed: registry classes get their jury
+    // checked against the registry; a class outside it passes with a warning; and
+    // any class with no arbiter able to serve it is an error.
     if (classIdValid) {
-      let classMap = null;
-      try {
-        classMap = require('@verdikta/common')?.classMap;
-        if (!classMap || typeof classMap.getClass !== 'function') {
-          throw new Error('Missing or invalid classMap export from @verdikta/common');
-        }
-      } catch (e) {
-        logger.warn('[rubric/validate] classMap unavailable — skipping availability check', { msg: e.message });
-        classMap = null;
+      const juryCheck = checkJuryAgainstClass(juryNodes, classId);
+      errors.push(...juryCheck.errors);
+      warnings.push(...juryCheck.warnings);
+      if (juryCheck.invalidNodes.length > 0) allowedModels = juryCheck.allowedModels;
+      if (juryCheck.listed === null) {
+        tips.push(`Could not load the class map to verify jury models against class ${classId}; /jobs/create performs this check at creation time.`);
       }
 
-      if (!classMap) {
-        tips.push(`Could not load the class map to verify jury models against class ${classId}; /jobs/create performs this check at creation time.`);
-      } else {
-        const strict = validateJuryModelsAgainstClass(juryNodes, classId, classMap);
-        if (strict.misconfiguration) {
-          tips.push(`Could not verify jury models against class ${classId}; /jobs/create performs this check at creation time.`);
-        } else if (!strict.valid) {
-          if (strict.invalidNodes && strict.invalidNodes.length) {
-            for (const n of strict.invalidNodes) {
-              errors.push(`Jury model ${n.provider}/${n.model} is not available in class ${classId}`);
-            }
-            allowedModels = strict.allowedModels || null;
-          } else if (strict.error) {
-            errors.push(strict.error);
-          }
-        }
+      // Coverage depends on the fee limit: only the caller's own oracle* fields can
+      // be their error; failing server defaults just skip the coverage check.
+      let oracleSettings = null;
+      try {
+        oracleSettings = resolveOracleSettings(req.body || {});
+      } catch (oracleErr) {
+        const body = req.body || {};
+        const callerSent = ['oracleMaxOracleFee', 'oracleAlpha', 'oracleEstimatedBaseCost', 'oracleMaxFeeBasedScaling']
+          .some(k => body[k] != null && body[k] !== '');
+        if (callerSent) errors.push(`Invalid oracle settings: ${oracleErr.message}`);
+        else logger.warn('[rubric/validate] default oracle settings unavailable — skipping coverage', { msg: oracleErr.message });
+      }
+      if (oracleSettings) {
+        const coverageCheck = await checkClassCoverage(classId, oracleSettings, { creator: req.body?.creator });
+        coverage = coverageCheck.coverage;
+        if (coverageCheck.refusal) errors.push(coverageCheck.refusal);
+        warnings.push(...coverageCheck.warnings);
       }
     } else if (!classIdProvided) {
       tips.push('Pass classId alongside juryNodes to also verify each jury model is supported by the class — without it, /rubric/validate only checks jury structure and /jobs/create may still reject unsupported models (issue #16).');
@@ -2333,6 +2319,9 @@ router.post('/rubric/validate', (req, res) => {
     errors,
     checkedAt: new Date().toISOString()
   };
+  if (warnings.length) body.warnings = warnings;
+  if (classListed !== undefined) body.classListed = classListed;
+  if (coverage) body.coverage = coverage;
   if (allowedModels) body.allowedModels = allowedModels;
   if (tips.length) body.tips = tips;
   return res.json(body);
@@ -2632,8 +2621,10 @@ router.get('/:jobId/validate', async (req, res) => {
  * ReputationKeeper via the aggregator. Never errors on a keeper read failure —
  * returns { available:false } so the UI can degrade gracefully.
  *
- * Response: { available, classId, oracleSettings, totalInClass, eligibleCount,
- *   distinctOwnersEligible, priceBoostEnabled, alphaExtreme, warnings[] , ... }
+ * Response: { available, classId, classListed, oracleSettings, totalInClass, eligibleCount,
+ *   distinctOwnersEligible, creatorOperatedCount, priceBoostEnabled, alphaExtreme, warnings[] , ... }
+ * classListed: whether the class is in the @verdikta/common registry (null if unreadable).
+ * creatorOperatedCount: eligible arbiters whose operator is owned by the bounty creator.
  */
 router.get('/:jobId/oracle-check', async (req, res) => {
   const { jobId } = req.params;
@@ -2641,12 +2632,14 @@ router.get('/:jobId/oracle-check', async (req, res) => {
     const job = await jobStorage.getJob(jobId);
     const oracleSettings = jobOracleSettings(job);
     const classId = Number(job.classId ?? 128);
+    const classListed = lookupClass(classId).listed;
 
     if (!isVerdiktaServiceAvailable()) {
       return res.json({
         available: false,
         jobId: job.jobId,
         classId,
+        classListed,
         oracleSettings,
         reason: 'Verdikta service not configured on this server',
         warnings: []
@@ -2655,13 +2648,18 @@ router.get('/:jobId/oracle-check', async (req, res) => {
 
     try {
       const result = await getVerdiktaService().getClassOracleEligibility(classId, oracleSettings);
-      return res.json({ success: true, jobId: job.jobId, ...result });
+      const creator = String(job.creator || '').toLowerCase();
+      const creatorOperatedCount = creator
+        ? (result.eligibleArbiters || []).filter(a => a.owner && String(a.owner).toLowerCase() === creator).length
+        : 0;
+      return res.json({ success: true, jobId: job.jobId, classListed, creatorOperatedCount, ...result });
     } catch (keeperErr) {
       logger.warn('[oracle-check] keeper read failed', { jobId, msg: keeperErr.message });
       return res.json({
         available: false,
         jobId: job.jobId,
         classId,
+        classListed,
         oracleSettings,
         reason: `Could not read the arbiter registry: ${keeperErr.message}`,
         warnings: []

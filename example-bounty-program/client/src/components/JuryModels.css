@@ -20,6 +20,38 @@
   margin-bottom: 1.5rem;
 }
 
+.jury-section .class-trust-note {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  background-color: var(--info-light);
+  border: 1px solid var(--info-border);
+  color: var(--info-dark);
+}
+
+.jury-section .class-trust-note.caution {
+  background-color: var(--warning-light);
+  border-color: var(--warning-border);
+  color: var(--warning-dark);
+}
+
+.jury-section .class-trust-note svg {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.jury-section .class-trust-note p {
+  margin: 0;
+}
+
+.jury-section .class-trust-note p + p {
+  margin-top: 0.35rem;
+}
+
 .jury-section .jury-status {
   display: flex;
   align-items: center;

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { renderMarkdownSafe } from '../utils/markdownPreview';
 import JuryModels from '../components/JuryModels';
+import ClassTrustNote from '../components/ClassTrustNote';
 import { useToast } from '../components/Toast';
 import { apiService } from '../services/api';
 import { walletService } from '../services/wallet';
@@ -2505,7 +2506,9 @@ function BountyDetails({ walletState }) {
           bountyId={bountyId}
           juryNodes={job.juryNodes}
           evaluationCid={job.evaluationCid}
-        />
+        >
+          <ClassTrustNote jobId={bountyId} classId={job.classId ?? 128} />
+        </JuryModels>
       )}
 
       {/* Actions Section */}

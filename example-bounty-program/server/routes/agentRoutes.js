@@ -340,16 +340,39 @@ Rules enforced by the validator (see errors verbatim from /rubric/validate):
 
 Same shape rule applies to juryNodes — pass it as a native array, not a string.
 
+## Classes (permissionless)
+A class is whatever the people running arbiters for it say it is: a model
+panel, special tools, other capabilities. Nobody approves new classes. Arbiter
+operators register their nodes for class X on-chain and advertise what X does;
+creators then post bounties with classId X.
+
+- Registry classes (GET /api/classes) come from @verdikta/common and carry a
+  model list. For those, every juryNodes provider/model must be on the list
+  (GET /api/classes/:classId/models), or /jobs/create refuses.
+- Any other class ID is allowed. GET /api/classes/:classId[/models] answers
+  status "UNLISTED" with no model list, and /jobs/create returns warnings
+  instead of refusing: the jury can't be checked, so use exactly the
+  identifiers the class's operators advertise. An identifier their nodes don't
+  serve makes every evaluation fail, and the bounty can't be edited or canceled.
+- Every class must have arbiters: GET /api/classes/:classId/coverage
+  [?maxOracleFee=] reads the on-chain registry. /jobs/create (and
+  /rubric/validate) refuse with code CLASS_UNSERVABLE only when ZERO arbiters
+  are eligible at the bounty's fee, because then every evaluation start
+  reverts "No active oracles available". Thin coverage, a single operator, or
+  arbiters owned by the creator's own address are warnings, returned in the
+  create response's classPolicy and shown to hunters on the bounty page.
+
 ## Validating Without Side Effects
 Three free, read-only endpoints cover every legitimate reason an agent might
 have to "test" /jobs/create. Use these instead — they never increment the
 jobId counter, never pin to IPFS, never spend gas.
 
   POST /api/jobs/rubric/validate
-    Body: { "rubricJson": { "criteria": [ ... ] } }
-    Returns: { valid, errors[] }
+    Body: { "rubricJson": { "criteria": [ ... ] }, "juryNodes": [ ... ], "classId": 717 }
+    Returns: { valid, errors[], warnings[], classListed, coverage }
     Use BEFORE /jobs/create to check rubric shape (criteria count, weights
-    sum to 1.0, must/weight rule, etc.).
+    sum to 1.0, must/weight rule, etc.). With juryNodes + classId it applies
+    the same class rules as /jobs/create (see Classes above).
 
   POST /api/jobs/validate
     Body: { "evaluationCid": "Qm...", "classId": 128 }
@@ -1028,8 +1051,12 @@ router.get('/api/docs', (req, res) => {
         path: '/jobs/rubric/validate',
         description: 'Validate a rubric JSON object\'s shape without pinning, creating a job, or incrementing the jobId counter. Use this BEFORE /jobs/create to debug rubric shape — never use /jobs/create as a debugging tool.',
         contentType: 'application/json',
-        fields: ['rubricJson: object (required) — pass as a NATIVE JSON object, not a stringified one. The request body is already JSON.'],
-        returns: '{ valid: boolean, errors: string[], checkedAt }. Validates: 1-10 criteria; each has unique id (string), must (boolean), weight (number 0-1), description (string); must=true criteria must have weight=0; scored (must=false) weights must sum to 1.0 (±0.001). Threshold is NOT part of the rubric — it is a top-level field on /jobs/create.'
+        fields: [
+          'rubricJson: object (required) — pass as a NATIVE JSON object, not a stringified one. The request body is already JSON.',
+          'juryNodes: array (optional) — also validate the jury; with classId, applies the /jobs/create class rules',
+          'classId: integer (optional) — registry classes check jury models; any class checks live arbiter coverage'
+        ],
+        returns: '{ valid: boolean, errors: string[], warnings?: string[], classListed?, coverage?, allowedModels?, tips?, checkedAt }. Validates: 1-10 criteria; each has unique id (string), must (boolean), weight (number 0-1), description (string); must=true criteria must have weight=0; scored (must=false) weights must sum to 1.0 (±0.001). Threshold is NOT part of the rubric — it is a top-level field on /jobs/create.'
       },
       {
         method: 'POST',
@@ -1193,7 +1220,7 @@ router.get('/api/docs', (req, res) => {
       {
         method: 'GET',
         path: '/jobs/:id/oracle-check',
-        description: 'Sanity-check a bounty\'s oracle settings against the live arbiter registry for its class. Returns { available, eligibleCount (active arbiters priced <= the bounty\'s maxOracleFee), totalInClass, distinctOwnersEligible, priceBoostEnabled, alphaExtreme, warnings: [] } — plain-English warnings when the eligible pool is small (< 6), one operator owns half or more of it, the price boost is on, or alpha is extreme. Hunters: run this before preparing; a rigged jury shows up here. available:false means the registry could not be read.',
+        description: 'Sanity-check a bounty\'s oracle settings against the live arbiter registry for its class. Returns { available, classListed (is the class in the @verdikta/common registry), eligibleCount (active arbiters priced <= the bounty\'s maxOracleFee), totalInClass, distinctOwnersEligible, creatorOperatedCount (eligible arbiters owned by the bounty creator), priceBoostEnabled, alphaExtreme, warnings: [] } — plain-English warnings when the eligible pool is small (< 6), one operator owns half or more of it, the price boost is on, or alpha is extreme. Hunters: run this before preparing; a rigged jury shows up here. available:false means the registry could not be read.',
         params: ['none']
       },
       {
@@ -1265,18 +1292,24 @@ router.get('/api/docs', (req, res) => {
       {
         method: 'GET',
         path: '/classes',
-        description: 'List Verdikta AI evaluation classes',
+        description: 'List the classes in the @verdikta/common registry. Classes are permissionless: any other class ID with registered arbiters can also be used (see /classes/:classId/coverage).',
         params: ['status', 'provider']
       },
       {
         method: 'GET',
         path: '/classes/:classId',
-        description: 'Get specific class info'
+        description: 'Get class info. A class outside the registry returns { listed: false, class: { status: "UNLISTED", models: [] } } (200, not 404).'
       },
       {
         method: 'GET',
         path: '/classes/:classId/models',
-        description: 'Get available AI models for a class'
+        description: 'Get the registry model list for a class. Unlisted classes return { listed: false, status: "UNLISTED", models: [] }: use the identifiers the class\'s arbiter operators advertise.'
+      },
+      {
+        method: 'GET',
+        path: '/classes/:classId/coverage',
+        description: 'Live arbiter coverage for ANY class from the on-chain registry: { listed, servable (false = zero eligible arbiters, /jobs/create would refuse; null = could not check), refusal, coverage: { totalInClass, activeInClass, eligibleCount, pricedOutCount, distinctOwnersEligible, oraclesToPoll }, warnings[] }.',
+        params: ['maxOracleFee (optional; decimal ETH or integer wei; defaults to the API default fee)']
       }
     ],
     contract: {

@@ -21,6 +21,7 @@ import './JuryModels.css';
  * @param {string} [props.title]
  * @param {string} [props.description]
  * @param {boolean} [props.showEvalLink] render the "View Full Evaluation Details" link
+ * @param {React.ReactNode} [props.children] notes shown under the description
  */
 export default function JuryModels({
   bountyId,
@@ -29,6 +30,7 @@ export default function JuryModels({
   title = 'AI Jury Configuration',
   description = 'Submissions are evaluated by the AI models below. Each model scores independently, and the final score is a weighted average.',
   showEvalLink = true,
+  children,
 }) {
   // Normalize the stored juryNodes (camelCase) into a common shape.
   const stored = (Array.isArray(juryNodes) ? juryNodes : [])
@@ -93,6 +95,7 @@ export default function JuryModels({
         <Cpu size={20} className="inline-icon" /> {title}
       </h2>
       <p className="jury-description">{description}</p>
+      {children}
 
       {loading && (
         <p className="jury-status">

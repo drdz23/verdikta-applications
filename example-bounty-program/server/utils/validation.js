@@ -217,19 +217,28 @@ function validateModelIdFormat(modelId) {
 /**
  * Validate jury configuration
  * @param {Array} juryNodes - Array of jury node configurations
- * @returns {{ valid: boolean, errors: string[] }} - Validation result
+ * @param {Object} [options]
+ * @param {'error'|'warn'} [options.modelFormat='error'] - How to treat model ids outside
+ *   [a-z0-9.-]. 'warn' is for classes outside the class registry: their arbiter operators
+ *   define the identifiers, so the format heuristic can't rule them out.
+ * @param {(provider: string, model: string) => boolean} [options.isRegistryModel] - Ids the
+ *   class registry lists exactly skip the format heuristic: the registry is authoritative,
+ *   and real registry ids use characters it rejects (Ollama "qwen3.5:9b", Hyperbolic
+ *   "Qwen/Qwen3-Coder-480B-A35B-Instruct", OpenRouter "deepseek/deepseek-v4-pro-0813").
+ * @returns {{ valid: boolean, errors: string[], warnings: string[] }} - Validation result
  */
-function validateJuryNodes(juryNodes) {
+function validateJuryNodes(juryNodes, { modelFormat = 'error', isRegistryModel } = {}) {
   const errors = [];
+  const warnings = [];
 
   if (!Array.isArray(juryNodes)) {
     errors.push('Jury nodes must be an array');
-    return { valid: false, errors };
+    return { valid: false, errors, warnings };
   }
 
   if (juryNodes.length === 0) {
     errors.push('At least one jury node is required');
-    return { valid: false, errors };
+    return { valid: false, errors, warnings };
   }
 
   // Validate each jury node
@@ -243,9 +252,9 @@ function validateJuryNodes(juryNodes) {
     if (!node.model || typeof node.model !== 'string') {
       errors.push(`Jury node ${index}: Missing or invalid model`);
     } else {
-      const modelFormatError = validateModelIdFormat(node.model);
+      const modelFormatError = isRegistryModel?.(node.provider, node.model) ? null : validateModelIdFormat(node.model);
       if (modelFormatError) {
-        errors.push(`Jury node ${index}: ${modelFormatError}`);
+        (modelFormat === 'warn' ? warnings : errors).push(`Jury node ${index}: ${modelFormatError}`);
       }
     }
 
@@ -269,7 +278,8 @@ function validateJuryNodes(juryNodes) {
 
   return {
     valid: errors.length === 0,
-    errors
+    errors,
+    warnings
   };
 }
 

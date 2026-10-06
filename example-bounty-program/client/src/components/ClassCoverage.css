@@ -1,0 +1,56 @@
+/* Live arbiter coverage under the class picker (create wizard). */
+.class-coverage {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.class-coverage p {
+  margin: 0;
+}
+
+.class-coverage p + p,
+.class-coverage p + ul {
+  margin-top: 0.5rem;
+}
+
+.class-coverage.muted {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.class-coverage.ok {
+  background-color: var(--success-light);
+  border-color: var(--success-border);
+  color: var(--success-dark);
+}
+
+.class-coverage.warning {
+  background-color: var(--warning-light);
+  border-color: var(--warning-border);
+  color: var(--warning-dark);
+}
+
+.class-coverage.error {
+  background-color: var(--danger-light);
+  border-color: var(--danger-border);
+  color: var(--danger-dark);
+}
+
+.class-coverage-note {
+  color: var(--text);
+}
+
+.class-coverage-warnings {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.class-coverage-warnings li + li {
+  margin-top: 0.25rem;
+}

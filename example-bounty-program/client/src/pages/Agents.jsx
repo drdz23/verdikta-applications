@@ -1348,8 +1348,11 @@ def finalize_submission(w3, account, job_id, sub_id):
                 </p>
                 <p style={{ marginTop: '0.5rem' }}>
                   <strong>Supported models are dynamic.</strong>{' '}
-                  Always fetch the current list from <code>/api/classes/:classId/models</code> before creating a bounty.
-                  Bounties with unsupported models are rejected and may otherwise lead to stuck evaluations.
+                  For a registry class, always fetch the current list from <code>/api/classes/:classId/models</code> before creating a bounty;
+                  bounties with unsupported models are rejected and may otherwise lead to stuck evaluations.
+                  Classes are permissionless: any class with registered arbiters can be used, even one outside the registry.
+                  Check <code>/api/classes/:classId/coverage</code> first, and for an unlisted class use the model or tool
+                  identifiers its arbiter operators advertise.
                   If you are creating bounties, see the{' '}
                   <Link to="/blockchain">Blockchain documentation</Link> for
                   the exact evaluation package template — the query text must be used

@@ -31,6 +31,7 @@ import { config } from '../config';
 import * as rubricStorage from '../services/rubricStorage';
 import { getTemplateOptions, getTemplate, createBlankRubric, RUBRIC_DEFAULTS } from '../data/rubricTemplates';
 import ClassSelector from '../components/ClassSelector';
+import ClassCoverage from '../components/ClassCoverage';
 import CriterionEditor from '../components/CriterionEditor';
 import RubricLibrary from '../components/RubricLibrary';
 import './CreateBounty.css';
@@ -85,6 +86,9 @@ function CreateBounty({ walletState }) {
   const [availableModels, setAvailableModels] = useState({});
   const [classInfo, setClassInfo] = useState(null);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  // From ClassCoverage: false only when the chain says no arbiter can serve the
+  // selected class (the server would refuse the bounty), null when unchecked.
+  const [classServable, setClassServable] = useState(null);
   const [modelError, setModelError] = useState(null);
   const [rawModels, setRawModels] = useState([]); // Store full model data for details display
 
@@ -433,14 +437,18 @@ function CreateBounty({ walletState }) {
   }, [selectedClassId]);
 
   // ---------- jury node management ----------
+  // A class outside the registry has no model list: classes are permissionless, so
+  // its arbiter operators define the identifiers and the jury is typed in freely.
+  const isCustomClass = classInfo?.status === 'CUSTOM';
+
   const addJuryNode = () => {
     const providers = Object.keys(availableModels);
-    if (providers.length === 0) {
+    if (providers.length === 0 && !isCustomClass) {
       console.warn('No providers available for selected class');
       return;
     }
-    const firstProvider = providers[0];
-    const firstModel = availableModels[firstProvider]?.[0] || '';
+    const firstProvider = isCustomClass ? '' : providers[0];
+    const firstModel = isCustomClass ? '' : availableModels[firstProvider]?.[0] || '';
 
     setJuryNodes((prev) => [
       ...prev,
@@ -459,7 +467,7 @@ function CreateBounty({ walletState }) {
       prev.map((node) => {
         if (node.id === id) {
           const updated = { ...node, [field]: value };
-          if (field === 'provider' && availableModels[value]) {
+          if (field === 'provider' && availableModels[value] && !isCustomClass) {
             updated.model = availableModels[value][0] || '';
           }
           return updated;
@@ -1624,10 +1632,16 @@ function CreateBounty({ walletState }) {
             <div className="form-group">
               <label>Verdikta Class</label>
               <small className="helper-text" style={{ display: 'block', marginBottom: '0.5rem' }}>
-                Classes define which AI models are available and their configuration limits.
-                Different classes have different models optimized for various evaluation types.
+                A class is the set of arbiters that will judge your bounty, and what they can run.
+                Pick a class from the registry below, or enter any class ID that arbiters serve:
+                anyone can run arbiters for a new class and define what it means.
               </small>
               <ClassSelector selectedClassId={selectedClassId} onClassSelect={handleClassSelect} />
+              <ClassCoverage
+                classId={selectedClassId}
+                maxOracleFee={String(formData.oracleMaxOracleFeeEth || '').trim() || undefined}
+                onResult={({ servable }) => setClassServable(servable)}
+              />
             </div>
 
             {modelError && (
@@ -1643,7 +1657,7 @@ function CreateBounty({ walletState }) {
                   type="button"
                   onClick={addJuryNode}
                   className="btn btn-sm btn-secondary"
-                  disabled={isLoadingModels || Object.keys(availableModels).length === 0}
+                  disabled={isLoadingModels || (!isCustomClass && Object.keys(availableModels).length === 0)}
                   title="Add another AI model to the evaluation panel"
                 >
                   + Add Jury Node
@@ -1662,38 +1676,86 @@ function CreateBounty({ walletState }) {
                 </div>
               </div>
 
+              {isCustomClass && (
+                <datalist id="custom-class-providers">
+                  {Object.keys(availableModels).map((provider) => (
+                    <option key={provider} value={provider} />
+                  ))}
+                </datalist>
+              )}
               {juryNodes.map((node) => (
                 <div key={node.id} className="jury-node">
                   <div className="form-row">
-                    <div className="form-group">
-                      <label>Provider</label>
-                      <select
-                        value={node.provider}
-                        onChange={(e) => updateJuryNode(node.id, 'provider', e.target.value)}
-                        title="AI service provider (e.g., Anthropic, OpenAI)"
-                      >
-                        {Object.keys(availableModels).map((provider) => (
-                          <option key={provider} value={provider}>
-                            {provider}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {isCustomClass ? (
+                      <>
+                        {/* Free text for a class outside the registry; earlier
+                            classes' models are offered only as suggestions. */}
+                        <div className="form-group">
+                          <label htmlFor={`jury-provider-${node.id}`}>Provider</label>
+                          <input
+                            id={`jury-provider-${node.id}`}
+                            type="text"
+                            value={node.provider}
+                            onChange={(e) => updateJuryNode(node.id, 'provider', e.target.value)}
+                            list="custom-class-providers"
+                            placeholder="As the class's operators advertise"
+                            title="Provider identifier served by this class's arbiters"
+                            required
+                          />
+                        </div>
 
-                    <div className="form-group">
-                      <label>Model</label>
-                      <select
-                        value={node.model}
-                        onChange={(e) => updateJuryNode(node.id, 'model', e.target.value)}
-                        title="Specific AI model to use for evaluation"
-                      >
-                        {availableModels[node.provider]?.map((model) => (
-                          <option key={model} value={model}>
-                            {model}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                        <div className="form-group">
+                          <label htmlFor={`jury-model-${node.id}`}>Model or tool</label>
+                          <input
+                            id={`jury-model-${node.id}`}
+                            type="text"
+                            value={node.model}
+                            onChange={(e) => updateJuryNode(node.id, 'model', e.target.value)}
+                            list={`custom-class-models-${node.id}`}
+                            placeholder="Exact identifier"
+                            title="Model or tool identifier served by this class's arbiters"
+                            required
+                          />
+                          <datalist id={`custom-class-models-${node.id}`}>
+                            {availableModels[node.provider]?.map((model) => (
+                              <option key={model} value={model} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="form-group">
+                          <label>Provider</label>
+                          <select
+                            value={node.provider}
+                            onChange={(e) => updateJuryNode(node.id, 'provider', e.target.value)}
+                            title="AI service provider (e.g., Anthropic, OpenAI)"
+                          >
+                            {Object.keys(availableModels).map((provider) => (
+                              <option key={provider} value={provider}>
+                                {provider}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="form-group">
+                          <label>Model</label>
+                          <select
+                            value={node.model}
+                            onChange={(e) => updateJuryNode(node.id, 'model', e.target.value)}
+                            title="Specific AI model to use for evaluation"
+                          >
+                            {availableModels[node.provider]?.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    )}
 
                     <div className="form-group small">
                       <label title="Number of evaluation runs for this model">Runs</label>
@@ -1810,7 +1872,12 @@ function CreateBounty({ walletState }) {
                 ← Back
               </button>
 
-              <button type="submit" className="btn btn-primary btn-lg btn-with-icon" disabled={loading || juryNodes.length === 0 || divergence.length > 0}>
+              <button
+                type="submit"
+                className="btn btn-primary btn-lg btn-with-icon"
+                disabled={loading || juryNodes.length === 0 || divergence.length > 0 || classServable === false}
+                title={classServable === false ? 'No arbiters can serve the selected class (see above)' : undefined}
+              >
                 {loading ? 'Creating...' : <><Rocket size={18} /> Create Bounty</>}
               </button>
             </div>

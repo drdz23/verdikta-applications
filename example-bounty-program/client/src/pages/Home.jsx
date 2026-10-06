@@ -21,6 +21,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { apiService } from '../services/api';
+import { classMapService } from '../services/classMapService';
 import { config } from '../config';
 import {
   BountyStatus,
@@ -84,6 +85,9 @@ function Home({ walletState }) {
   const [pageSize, setPageSize] = useState(15);
   // Recent ETH/USD price (server proxy: Coinbase, CoinGecko fallback; 1-min cache) for approximate payout values
   const [ethPrice, setEthPrice] = useState(0);
+  // Class IDs in the Verdikta class registry; bounties on any other class get a
+  // "Custom class" badge (classes are permissionless). null until loaded.
+  const [registryClassIds, setRegistryClassIds] = useState(null);
 
   // Refs for auto-refresh and scroll
   const autoRefreshIntervalRef = useRef(null);
@@ -142,6 +146,16 @@ function Home({ walletState }) {
         console.warn('Failed to fetch ETH price:', err);
       }
     })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    classMapService.getClasses()
+      .then((classes) => {
+        if (!cancelled) setRegistryClassIds(new Set((classes || []).map((c) => Number(c.id))));
+      })
+      .catch(() => { /* no badge without the registry list */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -352,7 +366,7 @@ function Home({ walletState }) {
           <>
             <div className="bounty-grid">
               {paginatedJobs.map(job => (
-                <JobCard key={job.jobId} job={job} ethPrice={ethPrice} />
+                <JobCard key={job.jobId} job={job} ethPrice={ethPrice} registryClassIds={registryClassIds} />
               ))}
             </div>
             <div className="pagination">
@@ -484,7 +498,7 @@ function Home({ walletState }) {
 }
 
 // Job Card Component
-function JobCard({ job, ethPrice }) {
+function JobCard({ job, ethPrice, registryClassIds }) {
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   // Oracle-pool check (arbiters eligible under the bounty's oracle settings) — runs
@@ -653,6 +667,14 @@ function JobCard({ job, ethPrice }) {
             {job.targetHunter && (
               <span className="badge badge-targeted" title={`Targeted to ${job.targetHunter}`}>
                 Targeted
+              </span>
+            )}
+            {registryClassIds && job.classId != null && !registryClassIds.has(Number(job.classId)) && (
+              <span
+                className="badge badge-custom-class"
+                title={`Class ${job.classId} isn't in the Verdikta class registry, so its jury wasn't checked against a model list. Open the bounty to see who can evaluate it.`}
+              >
+                Custom class
               </span>
             )}
             {job.creatorAssessmentWindowSize > 0 && (

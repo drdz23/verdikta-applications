@@ -426,7 +426,7 @@ class VerdiktaService {
 
     const warnings = [];
     if (inClass.length === 0) {
-      warnings.push(`No arbiters are registered for class ${cls}. Evaluations for this bounty cannot be served until at least ${oraclesToPoll} join the class.`);
+      warnings.push(`No arbiters are registered for class ${cls}. Evaluations for this bounty cannot start until at least one joins the class (the aggregator polls ${oraclesToPoll} per round, so fewer means less redundancy).`);
     } else if (eligible.length === 0) {
       warnings.push(`None of the ${inClass.length} arbiter(s) registered for class ${cls} is both active and priced at or below this bounty's max oracle fee (${ethers.formatEther(maxFeeWei)} ETH). Evaluations would stall — raise the fee or pick another class.`);
     } else if (eligible.length < oraclesToPoll) {
