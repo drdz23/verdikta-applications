@@ -1,8 +1,9 @@
 import { rubricWeights } from '../utils/rubricWeights';
 import { validateBountyWindows } from '../utils/bountyWindows';
 import { effectiveBountyAmountEth } from '../utils/effectiveBountyAmount';
+import { pastedJsonText } from '../utils/pastedJson';
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import {
   PlusCircle,
   Check,
@@ -70,6 +71,7 @@ function CreateBounty({ walletState }) {
   const toast = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const reissueId = searchParams.get('clone');
   const [reissueFrom, setReissueFrom] = useState(null);
   const [step, setStep] = useState(1);
@@ -106,8 +108,16 @@ function CreateBounty({ walletState }) {
   // because it brings in AJV. Importing sends nothing: the owner still reviews, picks the jury and signs.
   const [imported, setImported] = useState(null);
   const [importErrors, setImportErrors] = useState([]);
-  const [importPaste, setImportPaste] = useState('');
+  // The buyer preview on the Agents page hands an agent's assessment input or a saved draft over in navigation state,
+  // never in the URL. It only prefills the paste box: the owner still imports it, and it is checked here.
+  const handedOver = typeof location.state?.workOrderPaste === 'string' ? location.state.workOrderPaste : null;
+  const [importPaste, setImportPaste] = useState(handedOver ?? '');
+  const [importHandoff, setImportHandoff] = useState(handedOver !== null);
   const [importApi, setImportApi] = useState(null);
+  // Drop the handed-over text from the history entry once it has prefilled the box, so a reload does not bring it back.
+  useEffect(() => {
+    if (location.state?.workOrderPaste !== undefined) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location, navigate]);
 
   // Form state (basic info)
   const [formData, setFormData] = useState({
@@ -712,7 +722,8 @@ function CreateBounty({ walletState }) {
     if (file.size > 256 * 1024) { setImportErrors(['The draft is larger than 256 KB']); return; }
     await applyImportBytes(new Uint8Array(await file.arrayBuffer()));
   };
-  const handleDraftPaste = () => applyImportBytes(new TextEncoder().encode(importPaste));
+  // A chat reply's code fences, part labels and prose are dropped; JSON pasted without fences is checked byte for byte.
+  const handleDraftPaste = () => applyImportBytes(new TextEncoder().encode(pastedJsonText(importPaste)));
   const restoreDraftValues = () => {
     if (!imported) return;
     setRubric({ version: RUBRIC_DEFAULTS.version, ...imported.patch.rubric });
@@ -720,7 +731,7 @@ function CreateBounty({ walletState }) {
     setLoadedRubricCid(null);
     setFormData((prev) => ({ ...prev, targetHunter: imported.patch.targetHunter }));
   };
-  const removeImport = () => { setImported(null); setImportErrors([]); setImportPaste(''); };
+  const removeImport = () => { setImported(null); setImportErrors([]); setImportPaste(''); setImportHandoff(false); };
   // A draft derived from an agent's assessment input can be saved, so the onboarding skill gets exactly these bytes.
   const downloadDerivedDraft = () => {
     if (!imported?.previewText) return;
@@ -994,11 +1005,18 @@ function CreateBounty({ walletState }) {
                     same code the onboarding skill uses, and an assessment input is turned into its draft there too.
                     Nothing is sent or submitted: you still review every field, choose the jury and sign with your own wallet.
                   </p>
+                  <p>
+                    An agent returns its assessment input as JSON in a code block. If its reply came in several messages (part 1/N, part 2/N, …),
+                    paste all of them here in order, fences and labels included: only the contents of the JSON code blocks are used.
+                  </p>
+                  {importHandoff && (
+                    <p>Carried over from the buyer preview. Check it with “Import pasted JSON”; nothing has been sent.</p>
+                  )}
                   <label className="work-order-file">Draft file
                     <input type="file" accept=".json,application/json" onChange={handleDraftFile} aria-label="Work-order draft file" />
                   </label>
                   <label>Or paste the draft or assessment input JSON
-                    <textarea rows={4} value={importPaste} onChange={(e) => setImportPaste(e.target.value)} spellCheck={false} aria-label="Work-order draft JSON" />
+                    <textarea rows={8} value={importPaste} onChange={(e) => setImportPaste(e.target.value)} spellCheck={false} aria-label="Work-order draft JSON" />
                   </label>
                   <button type="button" className="btn btn-secondary" onClick={handleDraftPaste} disabled={!importPaste.trim()}>Import pasted JSON</button>
                 </>

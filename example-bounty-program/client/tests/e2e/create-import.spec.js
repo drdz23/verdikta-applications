@@ -121,6 +121,18 @@ test('an assessment input an agent returned becomes its draft in the browser, wi
   expect(writes).toEqual([]);
 });
 
+test('a chat reply with prose, part labels and code fences imports as the input it carries', async ({ page }) => {
+  const panel = await openCreate(page);
+  const input = { request: structuredClone(request), task_summary: 'Check three claims (chat)', sharing_authorized: true, procurement_mode: 'OPEN' };
+  const compact = JSON.stringify(input); const cut = compact.indexOf(',"sharing_authorized"') + 1;
+  const reply = ['Decision: PREVIEW', 'part 1/2', '```json', compact.slice(0, cut), '```', 'part 2/2', '```json', compact.slice(cut), '```', 'Paste both parts in order.'].join('\n');
+  await panel.getByLabel('Work-order draft JSON').fill(reply);
+  await panel.getByRole('button', { name: 'Import pasted JSON' }).click();
+  await expect(panel.getByText('Imported draft', { exact: true })).toBeVisible();
+  const text = JSON.stringify(preview(structuredClone(input)), null, 2) + '\n';
+  await expect(panel.getByTestId('draft-sha256')).toHaveText(createHash('sha256').update(text).digest('hex'));
+});
+
 test('an assessment input that makes no draft is refused with the reason', async ({ page }) => {
   const panel = await openCreate(page);
   await panel.getByLabel('Work-order draft JSON').fill(JSON.stringify({ request: structuredClone(request), procurement_mode: 'OPEN' }));

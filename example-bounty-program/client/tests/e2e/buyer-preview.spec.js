@@ -1,5 +1,20 @@
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { test, expect } from '@playwright/test';
+import { preview } from '../../../../skills/verdikta-discover/scripts/preview-core.mjs';
+
+// An agent's chat reply in labelled parts, split right after commas outside strings (skill references/drafting.md).
+function chatReply(json, count) {
+  const cuts = []; let inString = false, escaped = false;
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (escaped) escaped = false; else if (c === '\\') escaped = inString; else if (c === '"') inString = !inString; else if (c === ',' && !inString) cuts.push(i + 1);
+  }
+  const parts = []; let start = 0;
+  for (let k = 1; k < count; k++) { const cut = cuts.find(at => at >= (json.length * k) / count); parts.push(json.slice(start, cut)); start = cut; }
+  parts.push(json.slice(start));
+  return ['Decision: PREVIEW', ...parts.flatMap((part, i) => [`part ${i + 1}/${count}`, '```json', part, '```'])].join('\n');
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -35,8 +50,9 @@ test('buyer previews both templates without wallet, upload or purchase', async (
   await panel.getByRole('button',{name:'Preview a work order'}).click();
   await expect(panel.getByRole('heading',{name:'Draft ready for review'})).toBeVisible();
   const download=page.waitForEvent('download');await panel.getByRole('button',{name:'Save draft locally'}).click();
-  const file=await download;expect(file.suggestedFilename()).toBe('work-order-draft.json');
-  const saved=JSON.parse(await readFile(await file.path(),'utf8'));
+  const file=await download;expect(file.suggestedFilename()).toBe('work-order-draft-fixture-evidence-pack-001.json');
+  const savedText=await readFile(await file.path(),'utf8');const saved=JSON.parse(savedText);
+  expect(savedText).toBe(JSON.stringify(saved,null,2)+'\n');
   for(const flag of ['can_commission','authorization_granted','funds_moved']) expect(saved[flag]).toBe(false);
   expect(saved.draft.procurement.mode).toBe('OPEN');
   expect(await page.evaluate(()=>window.walletCalls.filter(m=>m.startsWith('eth_')))).toEqual([]);
@@ -60,11 +76,35 @@ test('an assessment input or saved draft is sent to the Create Bounty import, no
   await expect(panel.getByRole('heading',{name:'Draft ready for review'})).toBeVisible();
   await expect(panel.getByRole('alert')).toHaveCount(0);
   const download=page.waitForEvent('download');await panel.getByRole('button',{name:'Save draft locally'}).click();
-  await panel.getByRole('textbox').fill(await readFile(await (await download).path(),'utf8'));await panel.getByRole('button',{name:'Preview a work order'}).click();
+  const savedDraft=await readFile(await (await download).path(),'utf8');
+  await panel.getByRole('textbox').fill(savedDraft);await panel.getByRole('button',{name:'Preview a work order'}).click();
   await expect(panel.getByRole('alert')).toContainText('This is a saved work-order draft, not a request.');
-  await panel.getByRole('link',{name:'Create Bounty'}).click();
+  await panel.getByRole('alert').getByRole('link',{name:'Create Bounty'}).click();
   await expect(page).toHaveURL(/\/create$/);
   await expect(page.locator('.work-order-import')).toBeVisible();
+  await expect(page.getByLabel('Work-order draft JSON')).toHaveValue(savedDraft);
+});
+
+test('an agent reply in labelled parts goes to Create Bounty with its text and imports with the script\'s hash',async({page})=>{
+  const writes=[];page.on('request',r=>{if(r.method()!=='GET')writes.push(`${r.method()} ${r.url()}`);});
+  const example=JSON.parse(await readFile(new URL('../../../../skills/verdikta-discover/examples/source-check-v1.request.json',import.meta.url),'utf8'));
+  const input={request:{...example,fixture_only:false,task_id:'e2e-handoff'},task_summary:'Check three claims (handoff)',sharing_authorized:true,procurement_mode:'OPEN'};
+  await page.goto('/agents');const panel=page.locator('#buyer-preview');
+  await panel.getByRole('textbox').fill(chatReply(JSON.stringify(input),2));await panel.getByRole('button',{name:'Preview a work order'}).click();
+  await expect(panel.getByRole('alert')).toContainText('This is an assessment input from an agent, not a request.');
+  await panel.getByRole('alert').getByRole('link',{name:'Create Bounty'}).click();
+  await expect(page).toHaveURL(/\/create$/);
+  const importPanel=page.locator('.work-order-import');const box=importPanel.getByLabel('Work-order draft JSON');
+  await expect(importPanel.getByText(/^Carried over from the buyer preview/)).toBeVisible();
+  expect(JSON.parse(await box.inputValue())).toEqual(input);
+  await importPanel.getByRole('button',{name:'Import pasted JSON'}).click();
+  await expect(importPanel.getByText('Imported draft',{exact:true})).toBeVisible();
+  const text=JSON.stringify(preview(structuredClone(input)),null,2)+'\n';
+  await expect(importPanel.getByTestId('draft-sha256')).toHaveText(createHash('sha256').update(text).digest('hex'));
+  expect(writes).toEqual([]);
+  expect(await page.evaluate(()=>window.walletCalls.filter(m=>m.startsWith('eth_')))).toEqual([]);
+  await page.reload();
+  await expect(page.locator('.work-order-import').getByLabel('Work-order draft JSON')).toHaveValue('');
 });
 
 test('targeted preview does not silently open a missing supplier',async({page})=>{
