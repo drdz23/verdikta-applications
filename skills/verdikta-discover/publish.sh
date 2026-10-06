@@ -3,12 +3,13 @@
 # Usage: ./publish.sh [--dry-run]
 #
 # Stages only what the skill needs into a temporary directory: SKILL.md,
-# _meta.json, package.json and package-lock.json, references/, scripts/ (with
+# CHANGELOG.md, _meta.json, package.json and package-lock.json, references/, scripts/ (with
 # the self-contained preview.bundle.mjs and its third-party notices),
 # templates/, schemas/ and examples/. Leaves out tests/ (evaluation records and
 # prompt-injection test pages) and node_modules/. Then runs clawhub publish.
 #
-# The version is _meta.json's; package.json must carry the same one.
+# The version is _meta.json's; package.json must carry the same one, and
+# CHANGELOG.md must have a "## <version>" entry, which becomes the release notes.
 #
 # --dry-run stages and lists the files, then runs `clawhub publish --dry-run`:
 # the CLI hashes the files locally and asks the registry which version it would
@@ -58,11 +59,22 @@ if git -C "$SKILL_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 fi
 
+# This version's CHANGELOG.md entry, without its heading, is the release's changelog text.
+CHANGELOG="$(awk -v v="$VERSION" '/^## /{p = ($2 == v); next} p' "$SKILL_DIR/CHANGELOG.md" | sed -e '/./,$!d')"
+if [[ -z "$CHANGELOG" ]]; then
+  if [[ -n "$DRY_RUN" ]]; then
+    echo "Warning: CHANGELOG.md has no entry for $VERSION; a real publish would stop here." >&2
+  else
+    echo "Error: CHANGELOG.md has no '## $VERSION' entry." >&2
+    exit 1
+  fi
+fi
+
 STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/verdikta-discover-stage.XXXXXX")"
 trap 'rm -rf "${STAGE_DIR:?}"' EXIT
 mkdir -p "$STAGE_DIR/references" "$STAGE_DIR/scripts" "$STAGE_DIR/templates" "$STAGE_DIR/schemas" "$STAGE_DIR/examples"
 
-cp "$SKILL_DIR/SKILL.md" "$SKILL_DIR/_meta.json" "$SKILL_DIR/package.json" "$SKILL_DIR/package-lock.json" "$STAGE_DIR/"
+cp "$SKILL_DIR/SKILL.md" "$SKILL_DIR/CHANGELOG.md" "$SKILL_DIR/_meta.json" "$SKILL_DIR/package.json" "$SKILL_DIR/package-lock.json" "$STAGE_DIR/"
 cp "$SKILL_DIR"/references/*.md "$STAGE_DIR/references/"
 cp "$SKILL_DIR"/scripts/*.mjs "$SKILL_DIR/scripts/preview.bundle.NOTICES.txt" "$STAGE_DIR/scripts/"
 cp "$SKILL_DIR"/templates/*.json "$STAGE_DIR/templates/"
@@ -75,6 +87,7 @@ echo ""
 echo "Total: $(find "$STAGE_DIR" -type f | wc -l | tr -d ' ') files"
 
 PUBLISH_ARGS=("$STAGE_DIR" --slug verdikta-discover --name "Verdikta Discover" --version "$VERSION" --tags latest)
+[[ -n "$CHANGELOG" ]] && PUBLISH_ARGS+=(--changelog "$CHANGELOG")
 
 if [[ -n "$DRY_RUN" ]]; then
   echo ""
