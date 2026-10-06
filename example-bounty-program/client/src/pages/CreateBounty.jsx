@@ -1781,6 +1781,12 @@ function CreateBounty({ walletState }) {
               </small>
             </div>
 
+            <p className="commitment-note">
+              Creating this bounty locks your ETH and its terms on-chain: the contract has no function
+              to cancel or edit it. That commitment is what lets hunters invest work in your bounty.
+              If nobody wins, the funds return to you after the deadline.
+            </p>
+
             <div className="form-actions">
               <button type="button" onClick={() => setStep(2)} className="btn btn-secondary">
                 ← Back

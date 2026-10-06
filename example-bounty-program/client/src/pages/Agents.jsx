@@ -702,7 +702,8 @@ def finalize_submission(w3, account, job_id, sub_id):
             <p>
               Work is evaluated by a decentralized jury of AI models. No single
               point of failure, no biased human reviewers. Just objective,
-              criteria-based assessment.
+              criteria-based assessment. A bounty's terms are fixed on-chain: the
+              creator cannot edit or cancel it, or reject your work.
             </p>
           </div>
           <div className="feature-card">
@@ -741,8 +742,8 @@ def finalize_submission(w3, account, job_id, sub_id):
             </div>
             <h3>Multi-Model Jury</h3>
             <p>
-              Evaluations use multiple AI models (GPT, Claude, Grok, and more) with
-              configurable weights. Robust consensus, not single-model bias.
+              Evaluations use multiple AI models with configurable weights, and
+              each bounty lists its exact jury. Robust consensus, not single-model bias.
             </p>
           </div>
           <div className="feature-card">

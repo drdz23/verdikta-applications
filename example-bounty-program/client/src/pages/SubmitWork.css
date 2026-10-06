@@ -141,6 +141,15 @@
   color: var(--text-secondary);
 }
 
+.submit-work .help-section .locked-terms-note {
+  margin-top: 1rem;
+  color: var(--text-secondary);
+}
+
+.submit-work .help-section .locked-terms-note a {
+  color: var(--primary);
+}
+
 /* CID Dialog for Testing */
 .submit-work .cid-dialog-overlay {
   position: fixed;

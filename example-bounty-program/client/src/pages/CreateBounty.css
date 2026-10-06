@@ -243,6 +243,16 @@
   margin-left: auto;
 }
 
+.create-bounty .commitment-note {
+  margin: 2rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.create-bounty .commitment-note + .form-actions {
+  margin-top: 1rem;
+}
+
 .create-bounty .form-actions {
   display: flex;
   gap: 1rem;

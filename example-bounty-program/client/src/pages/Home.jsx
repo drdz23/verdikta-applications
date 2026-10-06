@@ -5,9 +5,7 @@ import {
   HelpCircle,
   AlertTriangle,
   Bot,
-  Zap,
   Lock,
-  BarChart3,
   Clock,
   RefreshCw,
   Trophy,
@@ -19,6 +17,8 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
+  FileLock2,
+  Eye,
 } from 'lucide-react';
 import { apiService } from '../services/api';
 import { config } from '../config';
@@ -53,6 +53,12 @@ const truncateAddress = (address) => {
 const getExplorerUrl = () => {
   const network = config.networks[config.network] || config.networks['base-sepolia'];
   return network.explorer;
+};
+
+// Sourcify's listing of the escrow's verified source for the current network
+const getVerifiedSourceUrl = () => {
+  const network = config.networks[config.network] || config.networks['base-sepolia'];
+  return `https://repo.sourcify.dev/${network.chainId}/${config.bountyEscrowAddress}`;
 };
 
 // Format a positive USD amount with thousands separators and 2 decimals.
@@ -234,7 +240,7 @@ function Home({ walletState }) {
       <div className="hero">
         <h1>AI-Powered Bounty Program</h1>
         <p className="hero-subtitle">
-          Create bounties, submit work, get evaluated by AI, earn ETH automatically
+          Bounties held in escrow and judged by AI. Submit work, pass the rubric, earn ETH automatically.
         </p>
         <div className="hero-actions">
           <Link to="/create" className="btn btn-primary btn-lg btn-with-icon">
@@ -246,6 +252,16 @@ function Home({ walletState }) {
             How It Works
           </a>
         </div>
+        <ul className="hero-guarantees">
+          <li><Lock size={14} /> Funds held by a smart contract</li>
+          <li><FileLock2 size={14} /> No cancel or edit function</li>
+          <li><Bot size={14} /> Judged by an AI jury, not the creator</li>
+          <li>
+            <a href="https://verdikta.org/how-it-works" target="_blank" rel="noopener noreferrer">
+              How Verdikta judges <ExternalLink size={12} />
+            </a>
+          </li>
+        </ul>
       </div>
 
       <section className="bounties-section" ref={bountyGridRef}>
@@ -393,41 +409,75 @@ function Home({ walletState }) {
           </div>
           <div className="step">
             <div className="step-number">3</div>
-            <h3>Review &amp; Evaluate</h3>
-            <p>Creator can approve directly, or an AI jury grades submissions against the rubric</p>
+            <h3>AI Jury Evaluates</h3>
+            <p>An AI jury grades each submission against the rubric. Where a bounty has an approval window, the creator can approve early</p>
           </div>
           <div className="step">
             <div className="step-number">4</div>
             <h3>Auto Payment</h3>
-            <p>Approved submissions win ETH automatically from escrow</p>
+            <p>Passing work is paid in ETH automatically from escrow</p>
           </div>
         </div>
       </section>
 
-      <section className="features">
-        <h2>Why Use Verdikta Bounties?</h2>
+      <section id="guarantees" className="features">
+        <h2>Trustless by Design</h2>
         <div className="feature-grid">
           <div className="feature">
-            <div className="feature-icon"><Bot size={32} /></div>
-            <h3>AI-Powered</h3>
-            <p>Multiple AI models evaluate submissions for fairness and accuracy</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon"><Zap size={32} /></div>
-            <h3>Automatic</h3>
-            <p>No manual review needed - payments happen automatically</p>
-          </div>
-          <div className="feature">
             <div className="feature-icon"><Lock size={32} /></div>
-            <h3>Trustless</h3>
-            <p>ETH locked in smart contract escrow until winner is determined</p>
+            <h3>Funds Locked</h3>
+            <p>
+              The payout is held by a smart contract from the moment a bounty is created. It is
+              released only to a winning hunter, or back to the creator after the deadline if
+              nobody wins.
+            </p>
           </div>
           <div className="feature">
-            <div className="feature-icon"><BarChart3 size={32} /></div>
-            <h3>Transparent</h3>
-            <p>All evaluations and scores are publicly verifiable</p>
+            <div className="feature-icon"><FileLock2 size={32} /></div>
+            <h3>Terms Fixed</h3>
+            <p>
+              The escrow contract has no function to cancel or edit a bounty. Payout, criteria,
+              jury, pass threshold and deadline are set once, at creation.
+            </p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon"><Bot size={32} /></div>
+            <h3>Judged by AI</h3>
+            <p>
+              Work is graded against the published rubric by a jury of AI models on the Verdikta
+              arbiter network. The creator cannot reject work; where a bounty has an approval
+              window, they can only approve early.
+            </p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon"><Eye size={32} /></div>
+            <h3>Verifiable</h3>
+            <p>
+              The contract source is public and verified, and every score and payout is recorded
+              on-chain.
+            </p>
           </div>
         </div>
+        <p className="guarantees-links">
+          {config.bountyEscrowAddress && (
+            <>
+              <a href={`${getExplorerUrl()}/address/${config.bountyEscrowAddress}`} target="_blank" rel="noopener noreferrer">
+                Escrow contract <ExternalLink size={12} />
+              </a>
+              <a href={getVerifiedSourceUrl()} target="_blank" rel="noopener noreferrer">
+                Verified source <ExternalLink size={12} />
+              </a>
+            </>
+          )}
+          <a href="https://verdikta.org/how-it-works" target="_blank" rel="noopener noreferrer">
+            How Verdikta works <ExternalLink size={12} />
+          </a>
+        </p>
+        <p className="guarantees-caveat">
+          These guarantees are how the system is designed, and are enforced by open-source contract
+          code that anyone can read and verify. Like all software, smart contracts can contain bugs,
+          and AI judgment can be wrong. Use at your own risk.
+        </p>
       </section>
     </div>
   );
@@ -633,7 +683,7 @@ function JobCard({ job, ethPrice }) {
                 title={isAwarded
                   ? 'Awarded — this bounty has been paid out and is no longer actionable.'
                   : isClosed
-                    ? 'Closed — this bounty was cancelled without a winner; funds returned.'
+                    ? 'Closed — this bounty expired without a winner; funds returned to the creator.'
                     : 'Expired — submission window has passed.'}
               >
                 <Check size={12} style={{ verticalAlign: 'middle', marginRight: '2px' }} />

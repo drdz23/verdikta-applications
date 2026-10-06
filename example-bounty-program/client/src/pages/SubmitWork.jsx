@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Upload,
   Lightbulb,
@@ -741,6 +741,11 @@ function SubmitWork({ walletState }) {
             <li>If you pass, bounty is awarded automatically! 🎉</li>
           </ol>
         )}
+        <p className="locked-terms-note">
+          While your work is evaluated, this bounty's criteria, jury and payout stay as shown: the
+          escrow contract has no function to edit or cancel a bounty, and the creator cannot reject
+          a submission. <Link to="/#guarantees">How this is enforced</Link>
+        </p>
 
         <h3><Coins size={18} className="inline-icon" /> Required Tokens</h3>
         <p>

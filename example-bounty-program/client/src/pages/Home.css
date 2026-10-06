@@ -27,6 +27,33 @@
   flex-wrap: wrap;
 }
 
+.home .hero-guarantees {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.375rem 1.25rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  opacity: 0.9;
+}
+
+.home .hero-guarantees li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.home .hero-guarantees a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #fff; /* on the gradient in both themes */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .home .bounties-section {
   margin-bottom: 4rem;
   animation: fade-in-up 0.5s ease-out;
@@ -437,6 +464,30 @@
 
 .home .feature p {
   color: var(--text-secondary);
+}
+
+.home .guarantees-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 1.5rem;
+  margin: 2.5rem 0 0;
+  font-size: var(--text-sm);
+}
+
+.home .guarantees-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--primary);
+}
+
+.home .guarantees-caveat {
+  max-width: 44rem;
+  margin: 1rem auto 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 @media (max-width: 768px) {

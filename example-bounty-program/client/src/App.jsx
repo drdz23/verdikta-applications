@@ -143,6 +143,10 @@ function AppContent() {
                 Escrow <code>{walletService.formatAddress(config.bountyEscrowAddress)}</code>
               </a>
             )}
+            <span>
+              <Link to="/#guarantees">On-chain escrow, judged by the Verdikta arbiter network</Link>
+              {' '}· Use at your own risk
+            </span>
           </div>
           <nav className="app-footer-links" aria-label="Footer">
             <Link to="/agents">Agents</Link>
@@ -156,7 +160,7 @@ function AppContent() {
             >
               Source
             </a>
-            <a href="https://verdikta.org" target="_blank" rel="noopener noreferrer">Verdikta</a>
+            <a href="https://verdikta.org/how-it-works" target="_blank" rel="noopener noreferrer">How Verdikta works</a>
           </nav>
         </div>
       </footer>
