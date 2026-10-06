@@ -9,7 +9,13 @@
  */
 
 const AdmZip = require('adm-zip');
-const { validateArchiveShape, CONFORMING_SHAPE_EXAMPLE } = require('../utils/archiveShapeValidator');
+const {
+  validateArchiveShape,
+  fetchAndValidateArchiveShape,
+  archiveShapeLabel,
+  CONFORMING_SHAPE_EXAMPLE,
+  MAX_JSON_ENTRY_BYTES,
+} = require('../utils/archiveShapeValidator');
 
 function zipOf(files) {
   const zip = new AdmZip();
@@ -132,5 +138,119 @@ describe('validateArchiveShape', () => {
     const result = validateArchiveShape(buf);
     expect(result.ok).toBe(false);
     expect(result.check).toBe('primary-query-invalid');
+  });
+});
+
+describe('validateArchiveShape — entry size caps', () => {
+  const big = 'x'.repeat(MAX_JSON_ENTRY_BYTES + 1);
+
+  it('rejects an oversized manifest.json without parsing it', () => {
+    const buf = zipOf({ 'manifest.json': `{"pad":"${big}"}` });
+    expect(validateArchiveShape(buf).check).toBe('manifest-too-large');
+  });
+
+  it('rejects an oversized primary file without parsing it', () => {
+    const buf = zipOf({
+      'manifest.json': JSON.stringify(CONFORMING_SHAPE_EXAMPLE),
+      'primary_query.json': JSON.stringify({ query: 'long enough query text', pad: big }),
+    });
+    expect(validateArchiveShape(buf).check).toBe('primary-too-large');
+  });
+
+  it('reports an empty manifest.json as not JSON', () => {
+    const buf = zipOf({ 'manifest.json': '' });
+    expect(validateArchiveShape(buf).check).toBe('manifest-not-json');
+  });
+});
+
+describe('archiveShapeLabel', () => {
+  it('labels a passing archive "ok"', () => {
+    expect(archiveShapeLabel({ ok: true })).toBe('ok');
+  });
+
+  it('labels a shape failure "malformed(<check>)"', () => {
+    expect(archiveShapeLabel({ ok: false, check: 'primary-not-json' })).toBe('malformed(primary-not-json)');
+  });
+
+  it('labels a gateway failure "unknown", never malformed', () => {
+    expect(archiveShapeLabel({ ok: false, check: 'gateway-unreachable', gatewayFailure: true })).toBe('unknown');
+  });
+});
+
+describe('fetchAndValidateArchiveShape', () => {
+  const CID = 'QmVfe1hSedejN2xRjjFkkZJ5hA6wVzqQk3moxrT58Ut7oD';
+  const conforming = zipOf({
+    'manifest.json': JSON.stringify(CONFORMING_SHAPE_EXAMPLE),
+    'primary_query.json': JSON.stringify({ query: 'This is my submitted work, please review it.' }),
+    'submission.md': '# My work',
+  });
+  const realFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  it('falls through a failing gateway to the next one', async () => {
+    const urls = [];
+    global.fetch = jest.fn(async (url) => {
+      urls.push(url);
+      return urls.length === 1 ? new Response('nope', { status: 504 }) : new Response(conforming);
+    });
+    const result = await fetchAndValidateArchiveShape(CID);
+    expect(result).toEqual({ ok: true });
+    expect(urls).toHaveLength(2);
+    expect(urls.every(u => u.endsWith(`/ipfs/${CID}`))).toBe(true);
+  });
+
+  it('never tries the retired cloudflare-ipfs.com gateway', async () => {
+    const urls = [];
+    global.fetch = jest.fn(async (url) => { urls.push(url); throw new Error('ECONNREFUSED'); });
+    await fetchAndValidateArchiveShape(CID);
+    expect(urls.some(u => u.includes('cloudflare-ipfs.com'))).toBe(false);
+  });
+
+  it('reports every gateway failing as a gateway failure, not a malformed archive', async () => {
+    global.fetch = jest.fn(async () => { throw new Error('ECONNREFUSED'); });
+    const result = await fetchAndValidateArchiveShape(CID);
+    expect(result.ok).toBe(false);
+    expect(result.gatewayFailure).toBe(true);
+    expect(archiveShapeLabel(result)).toBe('unknown');
+  });
+
+  it('gives up at the overall deadline instead of waiting on every gateway', async () => {
+    // Each gateway hangs until its abort signal fires.
+    global.fetch = jest.fn((url, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason));
+    }));
+    const started = Date.now();
+    const result = await fetchAndValidateArchiveShape(CID, { perGatewayTimeoutMs: 5000, totalTimeoutMs: 300 });
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(result.gatewayFailure).toBe(true);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an archive whose content-length exceeds the cap without downloading it', async () => {
+    global.fetch = jest.fn(async () => new Response(conforming, { headers: { 'content-length': '999999' } }));
+    const result = await fetchAndValidateArchiveShape(CID, { maxBytes: 1000 });
+    expect(result.ok).toBe(false);
+    expect(result.check).toBe('archive-too-large');
+    expect(result.gatewayFailure).toBeUndefined();
+  });
+
+  it('stops reading a streamed body once it passes the cap', async () => {
+    const stream = new ReadableStream({
+      pull(controller) { controller.enqueue(new Uint8Array(512)); }, // endless
+    });
+    global.fetch = jest.fn(async () => new Response(stream));
+    const result = await fetchAndValidateArchiveShape(CID, { maxBytes: 4096 });
+    expect(result.check).toBe('archive-too-large');
+  });
+
+  it('refuses a non-bare CID without fetching anything', async () => {
+    global.fetch = jest.fn();
+    const result = await fetchAndValidateArchiveShape(`${CID}/../../etc`);
+    expect(result.check).toBe('cid-invalid');
+    expect(result.gatewayFailure).toBeUndefined();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

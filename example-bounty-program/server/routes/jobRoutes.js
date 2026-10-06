@@ -1605,7 +1605,8 @@ router.post('/:jobId/submit/prepare', async (req, res) => {
           success: false,
           code: 'HUNTER_CID_UNREACHABLE',
           error: `Could not fetch hunterCid from any IPFS gateway: ${shapeResult.message}`,
-          fix: 'Confirm the CID is pinned and retry — this is a gateway/availability issue, not a malformed archive.'
+          retryable: true,
+          fix: 'Confirm the CID is pinned and retry in a minute (newly pinned content can take time to reach gateways) — this is a gateway/availability issue, not a malformed archive.'
         });
       }
       return res.status(400).json({
@@ -4632,6 +4633,9 @@ router.post('/:jobId/submit', async (req, res) => {
  * Create the backend submission record AFTER on-chain prepareSubmission succeeds.
  * This prevents orphaned "Prepared" submissions when on-chain tx fails.
  */
+// Time allowed for /submissions/confirm's non-blocking archive shape check.
+const CONFIRM_SHAPE_CHECK_BUDGET_MS = 15000;
+
 router.post('/:jobId/submissions/confirm', async (req, res) => {
   try {
     const { jobId } = req.params;
@@ -4681,28 +4685,31 @@ router.post('/:jobId/submissions/confirm', async (req, res) => {
       return res.json({ success: true, submission: existingSubmission, alreadyExists: true });
     }
 
+    // Non-blocking: the on-chain submission already exists by the time /confirm
+    // is called, so a bad shape here can't be prevented — only flagged for the
+    // UI/hunter to see (see #34). /submit/prepare is the blocking check. Runs
+    // alongside the chain read below, on a short budget so the browser's 30s
+    // request timeout isn't hit; a gateway that can't deliver in time yields
+    // 'unknown', never 'malformed'.
+    const archiveShapePromise = archiveShapeValidator
+      .fetchAndValidateArchiveShape(hunterCid, { totalTimeoutMs: CONFIRM_SHAPE_CHECK_BUDGET_MS })
+      .then(archiveShapeValidator.archiveShapeLabel)
+      .catch((e) => {
+        logger.warn('[submissions/confirm] archive shape check threw', { jobId, submissionId, error: e.message });
+        return 'unknown';
+      });
+
     // Create the submission record with the on-chain submissionId.
     // Start with a conservative default of 'Prepared'; below we try to read
     // chain truth and overwrite with the real status. If the chain read
     // succeeds and the bounty is windowed, this will already be
     // 'PendingCreatorApproval' with creatorWindowEnd set — no follow-up
     // refreshSubmission call needed from the client.
-    // Non-blocking: the on-chain submission already exists by the time /confirm
-    // is called, so a bad shape here can't be prevented — only flagged for the
-    // UI/hunter to see (see #34). /submit/prepare is the blocking check.
-    let archiveShape = 'unknown';
-    try {
-      const shapeResult = await archiveShapeValidator.fetchAndValidateArchiveShape(hunterCid);
-      archiveShape = shapeResult.ok ? 'ok' : `malformed(${shapeResult.check})`;
-    } catch (e) {
-      logger.warn('[submissions/confirm] archive shape check threw', { jobId, submissionId, error: e.message });
-    }
-
     const submission = {
       submissionId: Number(submissionId),
       hunter,
       hunterCid,
-      archiveShape,
+      archiveShape: 'unknown',
       evalWallet: evalWallet || null,
       fileCount: fileCount || 0,
       files: files || [],
@@ -4790,6 +4797,13 @@ router.post('/:jobId/submissions/confirm', async (req, res) => {
       }
       logger.warn('[submissions/confirm] chain read failed, keeping skeleton (sync will heal later)', {
         jobId, submissionId, error: chainErr.message
+      });
+    }
+
+    submission.archiveShape = await archiveShapePromise;
+    if (submission.archiveShape.startsWith('malformed')) {
+      logger.warn('[submissions/confirm] hunter archive failed shape check', {
+        jobId, submissionId, hunterCid, archiveShape: submission.archiveShape
       });
     }
 

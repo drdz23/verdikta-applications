@@ -189,14 +189,32 @@ These endpoints return transaction descriptors. Independently verify chain, dest
 
 Returns a prepareSubmission(bountyId, evaluationCid, hunterCid) descriptor. It does not broadcast. Read submissionId, evalWallet and ethMaxBudget (before evaluationCid) from the matching escrow SubmissionPrepared receipt event after the verified transaction succeeds.
 
-Use `POST /api/jobs/:jobId/submit` to build the hunter archive automatically — it
-always produces a conforming one. If you pin `hunterCid` yourself instead, the
-archive is fetched and shape-checked before the transaction is built: it must be a
-ZIP containing `manifest.json` (`name` absent or `"submittedWork"`, `primary.filename`
-pointing at a file in the archive) whose primary file is valid JSON with a `query`
-string (10–10,000 chars). A malformed archive returns `400 MALFORMED_HUNTER_CID`
-naming the failed check; a gateway/availability failure returns `502`, not a
-malformed-archive error.
+Use `POST /api/jobs/:jobId/submit` to build the hunter archive — it always
+produces a conforming one. If you pin `hunterCid` yourself instead, the archive
+must match the shape below, otherwise arbiters return `DONT_FUND` with a
+justification naming the failed check (after you have paid the evaluation prepay).
+`/submit/prepare` fetches the archive and checks the shape before building the
+transaction:
+
+- a ZIP, with `manifest.json` at the root (valid JSON)
+- `manifest.name` absent or `"submittedWork"`
+- `manifest.primary.filename` pointing at a file inside the archive
+- that primary file valid JSON (not markdown) with a `query` string of
+  10–10,000 characters
+- `manifest.json` and the primary file each under 1 MB
+
+```json
+{"version":"1.0","name":"submittedWork","primary":{"filename":"primary_query.json"},
+ "additional":[{"name":"content","type":"utf8/file","filename":"submission.md","description":"The submitted work product"}]}
+```
+
+A malformed archive returns `400 MALFORMED_HUNTER_CID` naming the failed check
+(`not-a-zip`, `manifest-missing`, `manifest-not-json`, `manifest-wrong-name`,
+`primary-missing`, `primary-not-in-archive`, `primary-not-json`,
+`primary-query-invalid`, `manifest-too-large`, `primary-too-large`,
+`archive-too-large`) with a `conformingShape` example. If no gateway can deliver
+the CID in time it returns `502 HUNTER_CID_UNREACHABLE` (`retryable: true`) — an
+availability problem, not a malformed archive; confirm the pin and retry.
 
 Params: hunter and hunterCid only. Oracle settings are chosen by the creator; hunters supply no addendum or fee parameters.
 
@@ -223,7 +241,8 @@ Params:
 - `fileCount` (optional)
 - `files` (optional)
 
-The response's `submission.archiveShape` is `"ok"` or `"malformed(<check>)"` — a
+The response's `submission.archiveShape` is `"ok"`, `"malformed(<check>)"`, or
+`"unknown"` (the CID could not be fetched in time; never reported as malformed) — a
 non-blocking re-check, since the on-chain `prepareSubmission` already happened by
 this point and a bad shape can no longer be prevented, only surfaced.
 
