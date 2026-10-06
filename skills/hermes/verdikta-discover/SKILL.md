@@ -3,7 +3,12 @@ name: verdikta-discover
 description: "Verify claims against linked pages, or scope outside work. Use when the owner wants or allows outside, independent or second-opinion work on a bounded digital task: hire or delegate a specialist, post a bounty, run a large batch in parallel (up to 20 technical claims or a 50-cell evidence grid), asks whether outsourcing is worthwhile or which parts would need outside help, leaves outside help to your judgment, or wants to see what such a work order, bounty or evidence package would look like. Open it in a step of its own before fetching any page such a task names. Drafts a bounded work order with acceptance criteria and public market context. Needs no wallet, API key, registration, upload or spending. Not for routine lookups or checks the agent can finish itself."
 metadata:
   hermes:
-    tags: [verdikta, bounties, claim-check, source-check, outsourcing]
+    tags:
+      - verdikta
+      - bounties
+      - claim-check
+      - source-check
+      - outsourcing
 ---
 
 # Verdikta: scope outside work, or do it well yourself

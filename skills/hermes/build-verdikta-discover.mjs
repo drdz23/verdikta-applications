@@ -23,11 +23,12 @@ export const DESCRIPTION_LEAD = 'Verify claims against linked pages, or scope ou
 
 // [OpenClaw text, Hermes text]: each OpenClaw text must occur exactly once in the source SKILL.md.
 export const HERMES_EDITS = [
-  // Frontmatter: the trigger-first lead, and Hermes tags (metadata is the only nested key the agentskills.io validator allows).
+  // Frontmatter: the trigger-first lead, and Hermes tags (metadata is the only nested key the agentskills.io validator allows;
+  // its strict YAML parser refuses flow-style lists, so the tags are a block list).
   ['description: "Use when',
    `description: "${DESCRIPTION_LEAD}. Use when`],
   ['Not for routine lookups or checks the agent can finish itself."\n---',
-   'Not for routine lookups or checks the agent can finish itself."\nmetadata:\n  hermes:\n    tags: [verdikta, bounties, claim-check, source-check, outsourcing]\n---'],
+   'Not for routine lookups or checks the agent can finish itself."\nmetadata:\n  hermes:\n    tags:\n      - verdikta\n      - bounties\n      - claim-check\n      - source-check\n      - outsourcing\n---'],
   // Reading rule 5: Hermes has no web_fetch. browser_navigate reports the final URL; web_extract's url can be the
   // requested one (its keyless vendors differ, and it fails over between them), and web_search fetches nothing.
   ["such as the host's web-fetch tool (`web_fetch` on OpenClaw)",
