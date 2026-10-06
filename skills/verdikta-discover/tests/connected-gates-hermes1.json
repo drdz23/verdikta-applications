@@ -123,7 +123,13 @@
   "a second model or provider",
   "any transaction"
  ],
- "changelog": [],
+ "changelog": [
+  {
+   "date": "2026-10-06",
+   "change": "First pass (tags h1-*, 9 sessions, 12 turns, all HTTP 200). The harness's sandbox reset removed each session's container, but the running gateway kept a reference to it. browser_navigate then failed ('The browser cannot run here: could not seed the sandbox desktop dir: ... No such container') in every later session that fetched: h1-mt02-s1, h1-cl01-s1, h1-cf03-s2, h1-mt02-s2, h1-ch01-s1 (brightwater/reference.md never loaded), h1-cf03-s3 and h1-mt02-s3. Per the stop rule these 7 sessions are infrastructure failures, void, and re-run under tags h1b-* (tests/hermes/plan-hermes1b.json, same relative order). h1-cf03-s1 (the first session after a gateway restart; its browser worked) and h1-cs01-s1 (no fetch) were unaffected and count. Harness fix: run-round.sh restarts the eval gateway after each pre-session sandbox reset, as every smoke session did. Nothing else changes: skill, pointer, config (sha256 305114cc), messages, gates.",
+   "reason": "Pre-registered stop rule: a harness or infrastructure failure voids the session, which is re-run under a new tag (suffix b) and reported. The void sessions' answers and tool calls are kept and reported beside the results, not counted."
+  }
+ ],
  "harness": {
   "plan": "tests/hermes/plan-hermes1.json",
   "run": "tests/hermes/run-round.sh (hturn.py, hdump.py, sandbox-reset.sh)",

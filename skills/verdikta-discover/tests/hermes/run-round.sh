@@ -2,7 +2,8 @@
 # usage: run-round.sh PLAN_JSON MSG_DIR LOCAL_OUT_DIR
 # Runs a pre-registered Hermes round from the operator's machine against vps-hermes-agent, one session at a time, in the
 # plan's order. Per session:
-#   1. as root, sandbox-reset.sh <tag>-pre: a fresh Docker sandbox (earlier sandbox folders are moved to ~hermes/eval/trash);
+#   1. as root, sandbox-reset.sh <tag>-pre: a fresh Docker sandbox (earlier sandbox folders are moved to ~hermes/eval/trash),
+#      then a restart of the eval gateway so it holds no reference to a removed container;
 #   2. as hermes, hturn.py for each turn over the loopback API server (the first creates the session and refuses an id that
 #      already exists, so a tag can never continue an old conversation);
 #   3. as hermes, hdump.py: the session's stored messages and tool calls, from state.db opened read-only;
@@ -17,6 +18,9 @@ ssh -n $BOX "mkdir -p $RUN/msgs" && scp -q "$MSGS"/*.txt "$PLAN" $BOX:$RUN/msgs/
 python3 -c 'import json, sys; [print(p["tag"], *p["turns"]) for p in json.load(open(sys.argv[1]))]' "$PLAN" | while read -r TAG TURNS; do
   if ssh -n $BOX "test -s $RUN/$TAG.dump.json"; then echo "$TAG: already run, skipped"; continue; fi
   ssh -n $BOX "/root/sandbox-reset.sh $ROUND-$TAG-pre" >/dev/null
+  # A fresh gateway for every session: the running gateway keeps a reference to the container the reset removed, and its
+  # browser then fails with "No such container" (Hermes round 1, first pass).
+  ssh -n $BOX "$ASH /home/hermes/eval/gw-restart.sh" | tail -1
   n=0; flag=--new
   for f in $TURNS; do
     n=$((n + 1)); s=$(date +%s)
