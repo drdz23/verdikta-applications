@@ -1541,6 +1541,62 @@ router.post('/:jobId/close', async (req, res) => {
 // same for every submission. The legacy hunter-side fields (addendum, alpha,
 // maxOracleFee, estimatedBaseCost, maxFeeBasedScaling) are accepted and IGNORED for
 // one release; they are not forwarded anywhere.
+// Time allowed for the hunterCid shape check on the calldata routes. An archive
+// the server can't fetch doesn't block the caller, so there is no point waiting
+// out every gateway: Pinata usually answers in ~6s.
+const CALLDATA_SHAPE_CHECK_BUDGET_MS = 20000;
+
+/**
+ * Shape-check a caller-supplied hunterCid before handing out prepareSubmission
+ * calldata (#34). A malformed archive is refused with a 400, since the evaluation
+ * prepay would be wasted on it. An archive the server cannot FETCH is not refused:
+ * public gateways throttle this host, so a fetch failure says nothing about the
+ * archive. That caller gets the calldata plus an unverified warning.
+ *
+ * Returns null when it has already sent the 400; otherwise
+ * { archiveShape: 'ok' | 'unknown', warnings: [] }.
+ */
+async function gateHunterArchive(res, hunterCid, logLabel) {
+  const result = await archiveShapeValidator.fetchAndValidateArchiveShape(hunterCid, {
+    totalTimeoutMs: CALLDATA_SHAPE_CHECK_BUDGET_MS,
+  });
+  if (result.ok) return { archiveShape: 'ok', warnings: [] };
+
+  if (result.gatewayFailure) {
+    logger.warn(`[${logLabel}] hunterCid could not be fetched for the shape check; returning calldata unverified`, {
+      hunterCid, error: result.message
+    });
+    return {
+      archiveShape: 'unknown',
+      warnings: [{
+        code: 'HUNTER_CID_UNVERIFIED',
+        message: `The server could not fetch hunterCid to check its archive shape (${result.message}). The calldata is returned anyway, but the archive was NOT verified.`,
+        fix: 'If you pinned this archive yourself, make sure it matches conformingShape before broadcasting: a malformed archive gets DONT_FUND from the arbiters after the prepay is spent. Archives built by POST /submit always conform.',
+        conformingShape: archiveShapeValidator.CONFORMING_SHAPE_EXAMPLE
+      }]
+    };
+  }
+
+  if (result.check === 'cid-invalid') {
+    res.status(400).json({
+      success: false,
+      code: 'INVALID_HUNTER_CID',
+      error: 'hunterCid must be a bare IPFS CID: 46-100 alphanumeric characters, no path, comma, colon or whitespace (contract: "bad hunterCid")'
+    });
+    return null;
+  }
+
+  res.status(400).json({
+    success: false,
+    code: 'MALFORMED_HUNTER_CID',
+    error: `Submission archive failed shape check: ${result.check}`,
+    details: result.message,
+    conformingShape: archiveShapeValidator.CONFORMING_SHAPE_EXAMPLE,
+    fix: 'Use POST /:jobId/submit to build a conforming archive automatically, or match the shape shown in conformingShape.'
+  });
+  return null;
+}
+
 router.post('/:jobId/submit/prepare', async (req, res) => {
   const { jobId } = req.params;
 
@@ -1598,26 +1654,8 @@ router.post('/:jobId/submit/prepare', async (req, res) => {
     // Shape-check the archive BEFORE spending the evaluation prepay on a
     // doomed submission (see #34 — bounties 57/58/59 each pinned a
     // differently-malformed archive and every arbiter aborted).
-    const shapeResult = await archiveShapeValidator.fetchAndValidateArchiveShape(hunterCid);
-    if (!shapeResult.ok) {
-      if (shapeResult.gatewayFailure) {
-        return res.status(502).json({
-          success: false,
-          code: 'HUNTER_CID_UNREACHABLE',
-          error: `Could not fetch hunterCid from any IPFS gateway: ${shapeResult.message}`,
-          retryable: true,
-          fix: 'Confirm the CID is pinned and retry in a minute (newly pinned content can take time to reach gateways) — this is a gateway/availability issue, not a malformed archive.'
-        });
-      }
-      return res.status(400).json({
-        success: false,
-        code: 'MALFORMED_HUNTER_CID',
-        error: `Submission archive failed shape check: ${shapeResult.check}`,
-        details: shapeResult.message,
-        conformingShape: archiveShapeValidator.CONFORMING_SHAPE_EXAMPLE,
-        fix: 'Use POST /:jobId/submit to build a conforming archive automatically, or match the shape shown in conformingShape.'
-      });
-    }
+    const archiveGate = await gateHunterArchive(res, hunterCid, 'submit/prepare');
+    if (!archiveGate) return;
 
     const iface = new ethers.Interface([
       'function prepareSubmission(uint256 bountyId, string evaluationCid, string hunterCid) returns (uint256 submissionId, address evalWallet, uint256 ethMaxBudget)'
@@ -1646,6 +1684,8 @@ router.post('/:jobId/submit/prepare', async (req, res) => {
         // Creator-chosen; the contract applies these — hunters cannot change them.
         oracleSettings: jobOracleSettings(job)
       },
+      archiveShape: archiveGate.archiveShape,
+      ...(archiveGate.warnings.length ? { warnings: archiveGate.warnings } : {}),
       ...(ignoredFields.length ? { ignoredFields, ignoredFieldsNote: 'These hunter-side oracle fields are no longer part of prepareSubmission; the bounty creator set the oracle settings at createBounty.' } : {}),
       // Canonical topic0 + ABI for the event this tx emits — filter the receipt logs
       // on `event.topic0` and decode with `event.abi` rather than deriving either.
@@ -5031,6 +5071,16 @@ router.post('/:jobId/submit/bundle', async (req, res) => {
       });
     }
 
+    // A caller-supplied hunterCid gets the same shape check as /submit/prepare
+    // (#34). An archive built just above by createHunterSubmissionCIDArchive is
+    // conforming by construction, and a fresh pin may not have reached the
+    // gateways yet, so it is not re-fetched.
+    let archiveGate = { archiveShape: 'ok', warnings: [] };
+    if (hunterCidVerified === null) {
+      archiveGate = await gateHunterArchive(res, hunterCid, 'submit/bundle');
+      if (!archiveGate) return;
+    }
+
     // ---- Build transaction calldata ----
     const escrowAddress = config.bountyEscrowAddress;
     const chainId       = config.chainId;
@@ -5054,6 +5104,8 @@ router.post('/:jobId/submit/bundle', async (req, res) => {
       success: true,
       hunterCid,
       hunterCidVerified,
+      archiveShape: archiveGate.archiveShape,
+      ...(archiveGate.warnings.length ? { warnings: archiveGate.warnings } : {}),
       oracleSettings: bountyOracle,
       ...(ignoredFields.length ? { ignoredFields, ignoredFieldsNote: 'These hunter-side oracle fields are no longer part of prepareSubmission; the bounty creator set the oracle settings at createBounty. They were not forwarded.' } : {}),
       transactions: [

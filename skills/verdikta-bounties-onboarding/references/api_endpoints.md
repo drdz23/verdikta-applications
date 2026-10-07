@@ -212,9 +212,13 @@ A malformed archive returns `400 MALFORMED_HUNTER_CID` naming the failed check
 (`not-a-zip`, `manifest-missing`, `manifest-not-json`, `manifest-wrong-name`,
 `primary-missing`, `primary-not-in-archive`, `primary-not-json`,
 `primary-query-invalid`, `manifest-too-large`, `primary-too-large`,
-`archive-too-large`) with a `conformingShape` example. If no gateway can deliver
-the CID in time it returns `502 HUNTER_CID_UNREACHABLE` (`retryable: true`) — an
-availability problem, not a malformed archive; confirm the pin and retry.
+`archive-too-large`) with a `conformingShape` example, and no calldata. A passing
+archive returns `archiveShape: "ok"`. If the server cannot fetch the archive in
+time (a gateway problem, not a verdict on the archive), it still returns the
+calldata, with `archiveShape: "unknown"` and a `warnings[]` entry with code
+`HUNTER_CID_UNVERIFIED`: the archive was not checked, so make sure it matches
+the shape above before broadcasting. `POST /api/jobs/:jobId/submit/bundle` runs
+the same check when you pass `hunterCid` instead of files.
 
 Params: hunter and hunterCid only. Oracle settings are chosen by the creator; hunters supply no addendum or fee parameters.
 

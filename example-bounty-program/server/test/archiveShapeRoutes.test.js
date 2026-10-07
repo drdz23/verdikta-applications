@@ -1,7 +1,8 @@
 /**
  * Route wiring for the hunter archive shape check (#34):
- *  - /submit/prepare blocks a malformed hunterCid (400) and reports an unreachable
- *    one as a gateway problem (502), never as malformed.
+ *  - /submit/prepare and /submit/bundle (caller-supplied hunterCid) block a
+ *    malformed archive (400). An archive the server cannot fetch is not blocked:
+ *    the calldata comes back with archiveShape 'unknown' and a warning.
  *  - /submissions/confirm records archiveShape without blocking, and an unreachable
  *    CID is recorded as 'unknown', never 'malformed(...)'.
  */
@@ -47,7 +48,8 @@ const bounty59 = zipOf({
 
 const chainPrepared = () => ({ status: 0n, hunter: HUNTER, hunterCid: CID, evalWallet: '0x' + '2'.repeat(40), verdiktaAggId: ZERO_HASH,
   acceptance: 0n, rejection: 0n, submittedAt: 1789000000n, finalizedAt: 0n, ethMaxBudget: 240000000000000n, creatorWindowEnd: 0n, funder: ZERO });
-function makeJob() { return { jobId: 7, title: 'T', creator: '0xcreator', bountyAmount: 0.01, threshold: 70, evaluationCid: 'QmEval', status: 'OPEN', createdAt: 1789000000, submissionCount: 0, submissions: [], contractAddress: '0xabc123', onChain: true, syncedFromBlockchain: true }; }
+function makeJob() { return { jobId: 7, title: 'T', creator: '0xcreator', bountyAmount: 0.01, threshold: 70, evaluationCid: 'QmEval', status: 'OPEN', createdAt: 1789000000, submissionCount: 0, submissions: [], contractAddress: '0xabc123', onChain: true, syncedFromBlockchain: true,
+  submissionOpenTime: 0, submissionCloseTime: 4102444800 }; }
 
 const app = express();
 app.use(express.json());
@@ -71,6 +73,8 @@ describe('POST /:jobId/submit/prepare shape check', () => {
     const res = await prepare();
     expect(res.status).toBe(200);
     expect(res.body.transaction.data).toMatch(/^0x/);
+    expect(res.body.archiveShape).toBe('ok');
+    expect(res.body.warnings).toBeUndefined();
   });
 
   it('rejects the bounty-59 shape with 400 MALFORMED_HUNTER_CID naming primary-not-json', async () => {
@@ -80,14 +84,52 @@ describe('POST /:jobId/submit/prepare shape check', () => {
     expect(res.body.code).toBe('MALFORMED_HUNTER_CID');
     expect(res.body.error).toMatch(/primary-not-json/);
     expect(res.body.conformingShape).toEqual(CONFORMING_SHAPE_EXAMPLE);
+    expect(res.body.transaction).toBeUndefined();
   });
 
-  it('reports an unreachable CID as 502 HUNTER_CID_UNREACHABLE, not malformed', async () => {
+  it('still returns calldata for an unreachable CID, flagged unverified', async () => {
     unreachable();
     const res = await prepare();
-    expect(res.status).toBe(502);
-    expect(res.body.code).toBe('HUNTER_CID_UNREACHABLE');
-    expect(res.body.retryable).toBe(true);
+    expect(res.status).toBe(200);
+    expect(res.body.transaction.data).toMatch(/^0x/);
+    expect(res.body.archiveShape).toBe('unknown');
+    expect(res.body.warnings[0].code).toBe('HUNTER_CID_UNVERIFIED');
+  });
+});
+
+describe('POST /:jobId/submit/bundle shape check (caller-supplied hunterCid)', () => {
+  const bundle = (hunterCid = CID) => request(app).post('/api/jobs/7/submit/bundle').send({ hunterAddress: HUNTER, hunterCid });
+
+  it('returns calldata for a conforming archive', async () => {
+    serve(conforming);
+    const res = await bundle();
+    expect(res.status).toBe(200);
+    expect(res.body.transactions[0].data).toMatch(/^0x/);
+    expect(res.body.archiveShape).toBe('ok');
+  });
+
+  it('rejects a malformed archive with 400 MALFORMED_HUNTER_CID and no calldata', async () => {
+    serve(bounty59);
+    const res = await bundle();
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MALFORMED_HUNTER_CID');
+    expect(res.body.transactions).toBeUndefined();
+  });
+
+  it('still returns calldata for an unreachable CID, flagged unverified', async () => {
+    unreachable();
+    const res = await bundle();
+    expect(res.status).toBe(200);
+    expect(res.body.archiveShape).toBe('unknown');
+    expect(res.body.warnings[0].code).toBe('HUNTER_CID_UNVERIFIED');
+  });
+
+  it('rejects a non-bare CID that the contract would revert on', async () => {
+    global.fetch = jest.fn();
+    const res = await bundle(`${CID}/submission.md`);
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('INVALID_HUNTER_CID');
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
