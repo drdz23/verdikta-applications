@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { initializeContractService, getContractService } from './services/contractService';
-import { config } from './config';
+import { config, currentNetwork } from './config';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { walletService } from './services/wallet';
 import { ToastProvider, useToast } from './components/Toast';
@@ -49,12 +49,7 @@ function AppContent() {
     }
   }, []);
 
-  const [walletState, setWalletState] = useState({
-    isConnected: false,
-    address: null,
-    chainId: null,
-    isCorrectNetwork: false
-  });
+  const [walletState, setWalletState] = useState(() => walletService.getState());
 
   // Subscribe to wallet state changes and try to reconnect on mount
   useEffect(() => {
@@ -88,15 +83,20 @@ function AppContent() {
       await walletService.connect();
       // State will be updated via subscription
     } catch (error) {
-      console.error('Failed to connect wallet:', error);
-      toast.error(`Failed to connect wallet: ${error.message}`);
+      // walletService already logged the raw error + diagnostics and set
+      // lastError (rendered persistently in the header). The toast is just a
+      // nudge toward it, so keep it short but visible for longer than default.
+      const explained = walletService.lastError;
+      toast.error(explained?.message || `Failed to connect wallet: ${error?.message || error}`, 8000);
     }
   };
 
   const handleDisconnect = () => {
-    walletService.disconnect();
+    walletService.disconnect({ revoke: true });
     // State will be updated via subscription
   };
+
+  const handleDismissError = () => walletService.clearError();
 
   return (
     <>
@@ -106,6 +106,7 @@ function AppContent() {
         walletState={walletState}
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}
+        onDismissError={handleDismissError}
       />
 
       <main className="main-content">
@@ -115,7 +116,7 @@ function AppContent() {
           <Route path="/create" element={<CreateBounty walletState={walletState} />} />
           <Route path="/bounty/:bountyId" element={<BountyDetails walletState={walletState} />} />
           <Route path="/bounty/:bountyId/submit" element={<SubmitWork walletState={walletState} />} />
-          <Route path="/my-bounties" element={<MyBounties walletState={walletState} />} />
+          <Route path="/my-bounties" element={<MyBounties walletState={walletState} onConnect={handleConnect} />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/agents" element={<Agents walletState={walletState} />} />
           <Route path="/skills" element={<Skills />} />
@@ -127,6 +128,42 @@ function AppContent() {
         </Routes>
         </ErrorBoundary>
       </main>
+
+      <footer className="app-footer">
+        <div className="app-footer-inner">
+          <div className="app-footer-meta">
+            <span>Verdikta Bounties · {currentNetwork.name}</span>
+            {config.bountyEscrowAddress && (
+              <a
+                href={`${currentNetwork.explorer}/address/${config.bountyEscrowAddress}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="BountyEscrow contract on the block explorer"
+              >
+                Escrow <code>{walletService.formatAddress(config.bountyEscrowAddress)}</code>
+              </a>
+            )}
+            <span>
+              <Link to="/#guarantees">On-chain escrow, judged by the Verdikta arbiter network</Link>
+              {' '}· Use at your own risk
+            </span>
+          </div>
+          <nav className="app-footer-links" aria-label="Footer">
+            <Link to="/agents">Agents</Link>
+            <Link to="/skills">Skills</Link>
+            <Link to="/blockchain">Blockchain</Link>
+            <a href="https://docs.verdikta.org" target="_blank" rel="noopener noreferrer">Docs</a>
+            <a
+              href="https://github.com/verdikta/verdikta-applications/tree/main/example-bounty-program"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Source
+            </a>
+            <a href="https://verdikta.org/how-it-works" target="_blank" rel="noopener noreferrer">How Verdikta works</a>
+          </nav>
+        </div>
+      </footer>
       </div>
     </>
   );

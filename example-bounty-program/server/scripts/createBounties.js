@@ -423,7 +423,7 @@ async function createJobBackend(bountyData, creatorAddress, amount, hours, extra
     ...(extras.creatorPay != null ? {
       creatorDeterminationPayment: extras.creatorPay,
       arbiterDeterminationPayment: extras.arbiterPay,
-      creatorAssessmentWindowHours: extras.windowSeconds / 3600,
+      creatorAssessmentWindowSeconds: extras.windowSeconds,
     } : {}),
   };
 

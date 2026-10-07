@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Upload,
   Lightbulb,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import JuryModels from '../components/JuryModels';
+import ClassTrustNote from '../components/ClassTrustNote';
 import { apiService } from '../services/api';
 import { getContractService } from '../services/contractService';
 import { config, currentNetwork } from '../config';
@@ -30,6 +31,44 @@ import {
   isBountyOpen,
 } from '../utils/statusDisplay';
 import './SubmitWork.css';
+
+// Upload limits. The server enforces the same ones (multer: 20 MB, 10 files),
+// but only at upload time, so they are checked here as files are added.
+const MAX_FILES = 10;
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const ALLOWED_TYPES = [
+  // Documents
+  '.txt', '.md', '.pdf', '.docx',
+  // Images
+  '.jpg', '.jpeg', '.png', '.bmp',
+  // Programming languages
+  '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.c', '.cpp', '.h', '.hpp',
+  '.cs', '.rb', '.go', '.rs', '.php', '.swift', '.kt', '.sol', '.r', '.m',
+  // Web
+  '.html', '.css', '.scss', '.sass',
+  // Data/Config
+  '.json', '.xml', '.yaml', '.yml', '.toml', '.csv',
+  // Shell
+  '.sh', '.bat', '.ps1',
+  // Other
+  '.sql'
+];
+// Archives get their own message: the oracle scores them 0, so the fix is
+// "attach the files inside", not "pick another format".
+const ARCHIVE_TYPES = ['.zip', '.tar', '.gz', '.tgz', '.bz2', '.7z', '.rar', '.xz'];
+
+const getExtension = (name) => '.' + name.split('.').pop().toLowerCase();
+const fileKey = (file) => `${file.name}:${file.size}:${file.lastModified}`;
+// A drag carrying files from the OS lists 'Files' in its types; text or link
+// drags do not, and are left alone.
+const isFileDrag = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+
+// "a.txt", "a.txt and b.txt", "a.txt, b.txt and 3 more"
+const listNames = (names) => {
+  if (names.length <= 2) return names.join(' and ');
+  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
+};
 
 function SubmitWork({ walletState }) {
   const toast = useToast();
@@ -47,6 +86,35 @@ function SubmitWork({ walletState }) {
   const [error, setError] = useState(null);
   const [submissionResult, setSubmissionResult] = useState(null);
   const [showCIDDialog, setShowCIDDialog] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  // dragenter/dragleave fire for every child the pointer crosses; counting
+  // them keeps the highlight steady until the drag really leaves the zone.
+  const dragDepthRef = useRef(0);
+  const dropZoneRef = useRef(null);
+
+  // A file dropped just outside the zone would make the browser open it,
+  // leaving the page and losing the narrative and file descriptions. Swallow
+  // file drops anywhere else on this page; the zone handles its own.
+  useEffect(() => {
+    const inZone = (e) => dropZoneRef.current?.contains(e.target);
+    const onDragOver = (e) => {
+      if (!isFileDrag(e) || inZone(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'none';
+    };
+    const onDrop = (e) => {
+      if (!isFileDrag(e)) return;
+      dragDepthRef.current = 0;
+      setDragActive(false);
+      if (!inZone(e)) e.preventDefault();
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
 
   // Load job details to check if submission is allowed
   useEffect(() => {
@@ -129,53 +197,106 @@ function SubmitWork({ walletState }) {
     }
   };
 
-  const handleFileAdd = (e) => {
-    const selectedFiles = Array.from(e.target.files);
-
-    if (selectedFiles.length === 0) return;
-
-    const allowedTypes = [
-      // Documents
-      '.txt', '.md', '.pdf', '.docx',
-      // Images
-      '.jpg', '.jpeg', '.png', '.bmp',
-      // Programming languages
-      '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.c', '.cpp', '.h', '.hpp',
-      '.cs', '.rb', '.go', '.rs', '.php', '.swift', '.kt', '.sol', '.r', '.m',
-      // Web
-      '.html', '.css', '.scss', '.sass',
-      // Data/Config
-      '.json', '.xml', '.yaml', '.yml', '.toml', '.csv',
-      // Shell
-      '.sh', '.bat', '.ps1',
-      // Other
-      '.sql'
-    ];
+  // Shared by the file picker and drag-and-drop, so both validate identically.
+  // `folderNames` are dropped directories, which are reported, not unpacked.
+  const addFiles = (incoming, folderNames = []) => {
+    const skipped = { folder: [...folderNames], archive: [], type: [], size: [], duplicate: [], limit: [] };
+    const seen = new Set(files.map(({ file }) => fileKey(file)));
     const validFiles = [];
 
-    for (const file of selectedFiles) {
-      // Validate file size (20 MB)
-      if (file.size > 20 * 1024 * 1024) {
-        toast.error(`File "${file.name}" is too large. Maximum size is 20 MB.`);
-        continue;
+    for (const file of incoming) {
+      const extension = getExtension(file.name);
+      if (ARCHIVE_TYPES.includes(extension)) {
+        skipped.archive.push(file.name);
+      } else if (!ALLOWED_TYPES.includes(extension)) {
+        skipped.type.push(file.name);
+      } else if (file.size > MAX_FILE_SIZE) {
+        skipped.size.push(file.name);
+      } else if (seen.has(fileKey(file))) {
+        skipped.duplicate.push(file.name);
+      } else if (files.length + validFiles.length >= MAX_FILES) {
+        skipped.limit.push(file.name);
+      } else {
+        seen.add(fileKey(file));
+        validFiles.push({
+          file,
+          description: `Work product file: ${file.name}`
+        });
       }
-
-      // Validate file type
-      const extension = '.' + file.name.split('.').pop().toLowerCase();
-      if (!allowedTypes.includes(extension)) {
-        toast.error(`Invalid file type for "${file.name}". Allowed: ${allowedTypes.join(', ')}`);
-        continue;
-      }
-
-      validFiles.push({
-        file,
-        description: `Work product file: ${file.name}`
-      });
     }
 
-    setFiles(prev => [...prev, ...validFiles]);
-    setError(null);
-    e.target.value = ''; // Reset input
+    if (validFiles.length > 0) {
+      setFiles(prev => [...prev, ...validFiles]);
+      setError(null);
+    }
+
+    // One message for everything that was left out, not one toast per file.
+    const reasons = [
+      skipped.folder.length && `${listNames(skipped.folder)}: folders can't be added, select the files inside instead`,
+      skipped.archive.length && `${listNames(skipped.archive)}: archives are scored 0 by the evaluators, attach the individual files instead`,
+      skipped.type.length && `${listNames(skipped.type)}: unsupported file type (see allowed formats below)`,
+      skipped.size.length && `${listNames(skipped.size)}: larger than 20 MB`,
+      skipped.duplicate.length && `${listNames(skipped.duplicate)}: already added`,
+      skipped.limit.length && `${listNames(skipped.limit)}: the limit is ${MAX_FILES} files`,
+    ].filter(Boolean);
+    if (reasons.length > 0) {
+      const message = `${validFiles.length > 0 ? 'Some files were not added' : 'No files were added'}. ${reasons.join('. ')}.`;
+      if (validFiles.length > 0) toast.warning(message, 8000);
+      else toast.error(message, 8000);
+    }
+  };
+
+  const handleFileInputChange = (e) => {
+    addFiles(Array.from(e.target.files || []));
+    e.target.value = ''; // Reset so the same file can be picked again after removal
+  };
+
+  const handleDragEnter = (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    if (!loading) setDragActive(true);
+  };
+
+  const handleDragOver = (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = loading ? 'none' : 'copy';
+  };
+
+  const handleDragLeave = (e) => {
+    if (!isFileDrag(e)) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  };
+
+  const handleDrop = (e) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    if (loading) return;
+
+    // DataTransferItem entries are only readable during the drop event, and
+    // they are the only way to tell a dropped folder from a file.
+    const dropped = [];
+    const folderNames = [];
+    const items = Array.from(e.dataTransfer.items || []);
+    if (items.length > 0) {
+      for (const item of items) {
+        if (item.kind !== 'file') continue;
+        const entry = item.webkitGetAsEntry?.();
+        if (entry?.isDirectory) {
+          folderNames.push(entry.name);
+          continue;
+        }
+        const file = item.getAsFile();
+        if (file) dropped.push(file);
+      }
+    } else {
+      dropped.push(...Array.from(e.dataTransfer.files || []));
+    }
+    addFiles(dropped, folderNames);
   };
 
   const handleFileRemove = (index) => {
@@ -602,7 +723,9 @@ function SubmitWork({ walletState }) {
           evaluationCid={job.evaluationCid}
           title="Who will evaluate your submission"
           description="These AI models will independently score your work; the final score is a weighted average. Review them before you submit."
-        />
+        >
+          <ClassTrustNote jobId={bountyId} classId={job.classId ?? 128} />
+        </JuryModels>
       )}
 
       <form onSubmit={handleSubmit} className="submit-form">
@@ -633,17 +756,48 @@ function SubmitWork({ walletState }) {
 
           <div className="form-group">
             <label htmlFor="files">Add Files *</label>
-            <input
-              id="files"
-              type="file"
-              onChange={handleFileAdd}
-              accept=".txt,.md,.pdf,.docx,.jpg,.jpeg,.png,.bmp,.py,.js,.ts,.jsx,.tsx,.java,.c,.cpp,.h,.hpp,.cs,.rb,.go,.rs,.php,.swift,.kt,.sol,.r,.m,.html,.css,.scss,.sass,.json,.xml,.yaml,.yml,.toml,.csv,.sh,.bat,.ps1,.sql"
-              multiple
-            />
+            <div
+              ref={dropZoneRef}
+              className={`file-drop-zone${dragActive ? ' drag-active' : ''}${loading ? ' disabled' : ''}`}
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              data-testid="file-drop-zone"
+            >
+              <input
+                id="files"
+                type="file"
+                className="file-drop-input"
+                onChange={handleFileInputChange}
+                accept={ALLOWED_TYPES.join(',')}
+                disabled={loading}
+                multiple
+              />
+              <label htmlFor="files" className="file-drop-label">
+                <Upload size={28} className="file-drop-icon" aria-hidden="true" />
+                {dragActive ? (
+                  <span className="file-drop-title">Drop to add files</span>
+                ) : (
+                  <>
+                    <span className="file-drop-title">
+                      <span className="file-drop-drag-text">Drag files here or </span>
+                      <span className="file-drop-button">Choose Files</span>
+                    </span>
+                    <span className="file-drop-count">
+                      {files.length === 0
+                        ? `Up to ${MAX_FILES} files, 20 MB each`
+                        : files.length >= MAX_FILES
+                          ? `${MAX_FILES} of ${MAX_FILES} files added. Remove one to add another`
+                          : `${files.length} of ${MAX_FILES} files added`}
+                    </span>
+                  </>
+                )}
+              </label>
+            </div>
             <small>
               Allowed formats: Code files (.py, .sol, .cpp, .js, .ts, .java, .c, .h, .go, .rs, etc.), documents (.txt, .md, .pdf, .docx), images (.jpg, .png, .bmp), and data files (.json, .xml, .yaml, .csv)<br />
-              Do <strong>not</strong> zip or archive your deliverable — the AI oracle skips archive/binary files and scores the submission 0. Attach the individual files instead.<br />
-              Maximum size per file: 20 MB | You can add up to 10 files
+              Do <strong>not</strong> zip or archive your deliverable — the AI oracle skips archive/binary files and scores the submission 0. Attach the individual files instead.
             </small>
           </div>
 
@@ -741,6 +895,11 @@ function SubmitWork({ walletState }) {
             <li>If you pass, bounty is awarded automatically! 🎉</li>
           </ol>
         )}
+        <p className="locked-terms-note">
+          While your work is evaluated, this bounty's criteria, jury and payout stay as shown: the
+          escrow contract has no function to edit or cancel a bounty, and the creator cannot reject
+          a submission. <Link to="/#guarantees">How this is enforced</Link>
+        </p>
 
         <h3><Coins size={18} className="inline-icon" /> Required Tokens</h3>
         <p>

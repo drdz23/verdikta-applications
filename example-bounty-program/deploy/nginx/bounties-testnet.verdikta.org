@@ -136,7 +136,8 @@ server {
     }
 
     # JSON API
-    location /api/ {
+    # ^~ so the "ends in .ext" regex above does not grab /api/jobs.txt first.
+    location ^~ /api/ {
         client_max_body_size 25m;
         proxy_pass http://localhost:5006/api/;
         proxy_http_version 1.1;

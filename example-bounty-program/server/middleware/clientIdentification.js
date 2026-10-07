@@ -42,6 +42,8 @@ const PUBLIC_PATHS = [
   '/sitemap.xml',         // XML sitemap
   '/api/docs',            // API documentation
   '/api/jobs.txt',        // Plain text bounty list
+  '/api/market-summary',  // Aggregate market context (counts, medians); public, no task content
+  '/api/abi',             // Merged contract ABI + addresses/verification links (also /api/abi/BountyEscrow.json)
   '/api/jobs/eth-price',  // ETH price proxy (public utility, no sensitive data)
   '/feed.xml',            // Atom feed
 ];

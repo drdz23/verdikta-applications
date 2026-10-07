@@ -1,0 +1,80 @@
+{
+  "agents": {
+    "entries": {
+      "vdisc-c-shell": {
+        "name": "verdikta-discover connected evaluation with a sandboxed shell (throwaway)",
+        "workspace": "/home/EVAL_USER/vdisc-eval/ws-shell",
+        "skills": [
+          "verdikta-discover"
+        ],
+        "model": {
+          "primary": "openai/gpt-5.6-terra",
+          "fallbacks": []
+        },
+        "tools": {
+          "allow": [
+            "read",
+            "exec",
+            "web_fetch"
+          ],
+          "deny": [
+            "web_search",
+            "process",
+            "write",
+            "edit",
+            "apply_patch",
+            "browser",
+            "message",
+            "cron",
+            "gateway",
+            "gateway_exec",
+            "code_execution"
+          ],
+          "fs": {
+            "workspaceOnly": true
+          },
+          "sandbox": {
+            "tools": {
+              "allow": [
+                "read",
+                "exec",
+                "web_fetch"
+              ]
+            }
+          },
+          "elevated": {
+            "enabled": false
+          }
+        },
+        "sandbox": {
+          "mode": "all",
+          "backend": "docker",
+          "scope": "session",
+          "workspaceAccess": "none",
+          "docker": {
+            "image": "vdisc-sandbox:node22",
+            "network": "none",
+            "readOnlyRoot": true,
+            "capDrop": [
+              "ALL"
+            ],
+            "tmpfs": [
+              "/tmp",
+              "/var/tmp",
+              "/run"
+            ]
+          }
+        },
+        "memory": {
+          "search": {
+            "enabled": false,
+            "rememberAcrossConversations": false
+          }
+        },
+        "subagents": {
+          "allowAgents": []
+        }
+      }
+    }
+  }
+}

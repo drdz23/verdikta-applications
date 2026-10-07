@@ -47,7 +47,7 @@ process.on('unhandledRejection', (reason) => {
   console.error('[fatal] unhandledRejection:', reason);
 });
 
-const { IPFSClient, classMap } = require('@verdikta/common');
+const { IPFSClient } = require('@verdikta/common');
 const logger = require('./utils/logger');
 const bountyRoutes = require('./routes/bountyRoutes');
 const submissionRoutes = require('./routes/submissionRoutes');
@@ -63,6 +63,7 @@ const verdiktaRoutes = require('./routes/verdiktaRoutes');
 const botRoutes = require('./routes/botRoutes');
 const receiptRoutes = require('./routes/receiptRoutes');
 const agentRoutes = require('./routes/agentRoutes');
+const classRoutes = require('./routes/classRoutes');
 const { initializeVerdiktaService } = require('./utils/verdiktaService');
 const clientIdentification = require('./middleware/clientIdentification');
 
@@ -247,154 +248,8 @@ app.use(agentRoutes);
 // Public (non-API) routes for shareable receipts + OG images
 app.use(receiptRoutes);
 
-// ClassMap API endpoints (reused from example-frontend)
-app.get('/api/classes', (req, res) => {
-  try {
-    const { status, provider } = req.query;
-    const filter = {};
-    if (status) filter.status = status;
-    if (provider) filter.provider = provider;
-
-    const classes = classMap.listClasses(filter);
-
-    // Convert BigInt IDs and fetch full class details including description
-    const serializedClasses = classes.map(cls => {
-      const fullClass = classMap.getClass(Number(cls.id));
-      return {
-        id: Number(cls.id),
-        status: cls.status,
-        name: cls.name,
-        description: fullClass?.description || '' // Get description from full class object
-      };
-    });
-
-    res.json({
-      success: true,
-      classes: serializedClasses,
-      classMapVersion: typeof classMap.getMapVersion === 'function' ? classMap.getMapVersion() : null,
-      source: '@verdikta/common',
-      generatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Error fetching classes:', error);
-    res.status(500).json({
-      error: 'Failed to fetch classes',
-      details: error.message
-    });
-  }
-});
-
-// Get specific class information
-app.get('/api/classes/:classId', (req, res) => {
-  try {
-    const classId = parseInt(req.params.classId, 10);
-
-    if (isNaN(classId)) {
-      return res.status(400).json({
-        error: 'Invalid class ID',
-        details: 'Class ID must be a number'
-      });
-    }
-
-    const classInfo = classMap.getClass(classId);
-
-    if (!classInfo) {
-      return res.status(404).json({
-        error: 'Class not found',
-        details: `Class ID ${classId} is not tracked`
-      });
-    }
-
-    // Convert BigInt ID to regular number for JSON serialization
-    const serializedClass = {
-      ...classInfo,
-      id: Number(classInfo.id),
-      description: classInfo.description || '' // Include description field
-    };
-
-    res.json({
-      success: true,
-      class: serializedClass,
-      classMapVersion: typeof classMap.getMapVersion === 'function' ? classMap.getMapVersion() : null,
-      source: '@verdikta/common',
-      generatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('Error fetching class:', error);
-    res.status(500).json({
-      error: 'Failed to fetch class',
-      details: error.message
-    });
-  }
-});
-
-// Get available models for a specific class
-app.get('/api/classes/:classId/models', (req, res) => {
-  try {
-    const classId = parseInt(req.params.classId, 10);
-
-    if (isNaN(classId)) {
-      return res.status(400).json({
-        error: 'Invalid class ID',
-        details: 'Class ID must be a number'
-      });
-    }
-
-    const classInfo = classMap.getClass(classId);
-
-    if (!classInfo) {
-      return res.status(404).json({
-        error: 'Class not found',
-        details: `Class ID ${classId} is not tracked`
-      });
-    }
-
-    // Check if class is empty (no models available)
-    if (classInfo.status === 'EMPTY') {
-      return res.json({
-        success: false,
-        status: 'EMPTY',
-        error: 'This class has no available models',
-        classId: Number(classInfo.id),
-        className: classInfo.name
-      });
-    }
-
-    // Group models by provider
-    const modelsByProvider = {};
-    if (classInfo.models && Array.isArray(classInfo.models)) {
-      classInfo.models.forEach(model => {
-        if (!modelsByProvider[model.provider]) {
-          modelsByProvider[model.provider] = [];
-        }
-        modelsByProvider[model.provider].push(model);
-      });
-    }
-
-    // Convert BigInt ID to regular number for JSON serialization
-    const response = {
-      success: true,
-      classId: Number(classInfo.id),
-      className: classInfo.name,
-      description: classInfo.description || '', // Include description field
-      status: classInfo.status,
-      models: classInfo.models || [],
-      modelsByProvider,
-      limits: classInfo.limits || null,
-      classMapVersion: typeof classMap.getMapVersion === 'function' ? classMap.getMapVersion() : null,
-      source: '@verdikta/common',
-      generatedAt: new Date().toISOString()
-    };
-
-    res.json(response);
-  } catch (error) {
-    logger.error('Error fetching models for class:', error);
-    res.status(500).json({
-      error: 'Failed to fetch models',
-      details: error.message
-    });
-  }
-});
+// ClassMap + coverage endpoints (routes/classRoutes.js)
+app.use(classRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

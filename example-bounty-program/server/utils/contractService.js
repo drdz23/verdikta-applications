@@ -8,6 +8,7 @@
  */
 
 const { ethers } = require('ethers');
+const { fundedBountyWei } = require('./bountyAmounts');
 const logger = require('./logger');
 
 // BountyEscrow ABI — functions + events
@@ -532,8 +533,12 @@ class ContractService {
         evaluationCid: bounty.evaluationCid,
         classId: Number(bounty.requestedClass),
         threshold: Number(bounty.threshold),
-        bountyAmount: ethers.formatEther(bounty.payoutWei),
-        bountyAmountWei: bounty.payoutWei.toString(),
+        // Funded amount (max of the two determination payments), NOT the live
+        // payoutWei, which the contract zeroes after payout/refund.
+        bountyAmount: ethers.formatEther(fundedBountyWei(bounty)),
+        bountyAmountWei: fundedBountyWei(bounty).toString(),
+        // Live escrow balance (raw payoutWei): what the contract still holds.
+        escrowWei: bounty.payoutWei.toString(),
         createdAt: Number(bounty.createdAt),
         submissionCloseTime: Number(bounty.submissionDeadline),
         status: effectiveStatus,
@@ -576,8 +581,12 @@ class ContractService {
         evaluationCid: bounty.evaluationCid,
         classId: Number(bounty.requestedClass),
         threshold: Number(bounty.threshold),
-        bountyAmount: ethers.formatEther(bounty.payoutWei),
-        bountyAmountWei: bounty.payoutWei.toString(),
+        // Funded amount (max of the two determination payments), NOT the live
+        // payoutWei, which the contract zeroes after payout/refund.
+        bountyAmount: ethers.formatEther(fundedBountyWei(bounty)),
+        bountyAmountWei: fundedBountyWei(bounty).toString(),
+        // Live escrow balance (raw payoutWei): what the contract still holds.
+        escrowWei: bounty.payoutWei.toString(),
         createdAt: Number(bounty.createdAt),
         submissionCloseTime: Number(bounty.submissionDeadline),
         status: effectiveStatus,

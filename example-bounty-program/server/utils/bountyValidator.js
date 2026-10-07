@@ -6,6 +6,7 @@
  */
 
 const logger = require('./logger');
+const { unlistedClassWarning, classMapVersion } = require('./classPolicy');
 
 // ZIP file magic bytes: PK\x03\x04
 const ZIP_MAGIC = Buffer.from([0x50, 0x4B, 0x03, 0x04]);
@@ -28,7 +29,8 @@ const IssueType = {
   MISSING_RUBRIC: 'MISSING_RUBRIC',           // No rubric.json in ZIP
   INVALID_RUBRIC: 'INVALID_RUBRIC',           // Rubric JSON is malformed
   MISSING_JURY: 'MISSING_JURY',               // No jury configuration
-  INVALID_CLASS: 'INVALID_CLASS',             // Class ID not found/inactive
+  INVALID_CLASS: 'INVALID_CLASS',             // Class listed in the registry but not ACTIVE
+  UNLISTED_CLASS: 'UNLISTED_CLASS',           // Class not in the registry (allowed; jury unverifiable)
   MODEL_UNAVAILABLE: 'MODEL_UNAVAILABLE',     // Jury model not in class
   INVALID_PRIMARY_QUERY: 'INVALID_PRIMARY_QUERY', // primary_query.json has wrong format
   MISSING_BCIDS: 'MISSING_BCIDS',             // manifest.json missing bCIDs
@@ -341,10 +343,12 @@ async function validateBounty({ evaluationCid, classId, ipfsClient, classMap }) 
       try {
         const classInfo = classMap.getClass(classId);
         if (!classInfo) {
+          // Classes are permissionless (see utils/classPolicy.js): a class outside the
+          // registry is valid, its jury just can't be checked against a model list.
           issues.push({
-            type: IssueType.INVALID_CLASS,
-            severity: IssueSeverity.ERROR,
-            message: `Class ${classId} not found in class map`
+            type: IssueType.UNLISTED_CLASS,
+            severity: IssueSeverity.WARNING,
+            message: unlistedClassWarning(classId, classMapVersion(classMap))
           });
         } else if (classInfo.status !== 'ACTIVE') {
           issues.push({

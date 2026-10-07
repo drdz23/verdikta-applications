@@ -52,10 +52,11 @@
 .agg-history .copy-btn {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.15rem 0.4rem;
+  border-radius: 0.375rem;
+  padding: 0.3rem 0.65rem;
   cursor: pointer;
-  font-size: 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   color: var(--text-secondary);
   transition: all 0.2s;
 }
@@ -114,7 +115,7 @@
 }
 
 /* Outcome Banner */
-.outcome-banner {
+.agg-history .outcome-banner {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -125,22 +126,22 @@
   font-weight: 600;
 }
 
-.outcome-banner.completed {
+.agg-history .outcome-banner.completed {
   background: rgba(34, 197, 94, 0.1);
   border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #22c55e;
+  color: var(--success);
 }
 
-.outcome-banner.failed {
+.agg-history .outcome-banner.failed {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  color: var(--danger);
 }
 
-.outcome-banner.running {
+.agg-history .outcome-banner.running {
   background: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.3);
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 /* Oracle slots table */
@@ -194,11 +195,11 @@
 }
 
 .agg-history .slots-table .icon-ok {
-  color: #22c55e;
+  color: var(--success);
 }
 
 .agg-history .slots-table .icon-fail {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .agg-history .slots-table .icon-na {
@@ -216,24 +217,24 @@
 }
 
 /* Requirements & Actual layout */
-.req-actual-container {
+.agg-history .req-actual-container {
   display: grid;
   grid-template-columns: 1fr 2fr;
   gap: 1.5rem;
   margin-bottom: 0;
 }
 
-.req-actual-half {
+.agg-history .req-actual-half {
   margin-bottom: 0 !important;
 }
 
-.req-actual-list {
+.agg-history .req-actual-list {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
 }
 
-.req-actual-row {
+.agg-history .req-actual-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -241,37 +242,37 @@
   border-bottom: 1px solid var(--border);
 }
 
-.req-actual-label {
+.agg-history .req-actual-label {
   font-size: 0.875rem;
   color: var(--text-secondary);
 }
 
-.req-actual-value {
+.agg-history .req-actual-value {
   font-size: 0.95rem;
   font-weight: 600;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
 }
 
-.req-actual-value.val-ok {
-  color: #22c55e;
+.agg-history .req-actual-value.val-ok {
+  color: var(--success);
 }
 
-.req-actual-value.val-warn {
-  color: #f59e0b;
+.agg-history .req-actual-value.val-warn {
+  color: var(--warning);
 }
 
-.req-actual-value.val-fail {
-  color: #ef4444;
+.agg-history .req-actual-value.val-fail {
+  color: var(--danger);
 }
 
-.req-actual-oracles {
+.agg-history .req-actual-oracles {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   padding: 0.35rem 0;
 }
 
-.oracle-chip {
+.agg-history .oracle-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
@@ -284,21 +285,21 @@
   text-decoration: none;
 }
 
-.oracle-chip:hover {
+.agg-history .oracle-chip:hover {
   text-decoration: underline;
 }
 
-.req-actual-detail {
+.agg-history .req-actual-detail {
   font-size: 0.8rem;
   color: var(--text-secondary);
   padding: 0.15rem 0;
 }
 
-.req-actual-failures {
+.agg-history .req-actual-failures {
   padding-top: 0.25rem;
 }
 
-.failure-line {
+.agg-history .failure-line {
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -307,18 +308,18 @@
   padding: 0.15rem 0;
 }
 
-.failure-line .icon-fail {
-  color: #ef4444;
+.agg-history .failure-line .icon-fail {
+  color: var(--danger);
   flex-shrink: 0;
 }
 
-.jobid-cell {
+.agg-history .jobid-cell {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
 }
 
-.copy-icon-btn {
+.agg-history .copy-icon-btn {
   background: none;
   border: none;
   padding: 0;
@@ -330,31 +331,203 @@
   transition: opacity 0.2s;
 }
 
-.copy-icon-btn:hover {
+.agg-history .copy-icon-btn:hover {
   opacity: 1;
 }
 
+/* Timing table */
+.agg-history .timing-hint {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.agg-history .timing-table .timing-cell {
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+  font-size: 0.72rem;
+}
+
+.agg-history .timing-table .timing-block {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.agg-history .timing-table .timing-time {
+  color: var(--text-secondary);
+  margin-top: 0.15rem;
+}
+
+.agg-history .timing-table .timing-offset {
+  color: var(--primary);
+  font-weight: 600;
+  margin-top: 0.15rem;
+}
+
+.agg-history .timing-table .timing-failed .timing-block {
+  color: var(--danger);
+}
+
+/* Timing scatter plot */
+.agg-history .timing-scatter {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.agg-history .scatter-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.agg-history .scatter-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.agg-history .scatter-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.agg-history .scatter-swatch.hollow {
+  background: var(--bg);
+  border: 2px solid;
+  box-sizing: border-box;
+}
+
+.agg-history .scatter-wrap {
+  position: relative;
+}
+
+.agg-history .scatter-wrap svg {
+  display: block;
+  height: auto;
+}
+
+.agg-history .scatter-rowline,
+.agg-history .scatter-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.agg-history .scatter-ylabel {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+  font-size: 11px;
+  fill: var(--text-secondary);
+}
+
+.agg-history .scatter-xlabel {
+  font-size: 10px;
+  fill: var(--text-secondary);
+}
+
+.agg-history .scatter-xtitle {
+  font-size: 10px;
+  fill: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.agg-history .scatter-hit {
+  outline: none;
+}
+
+/* All marks are pointer-transparent: the svg root resolves hover by nearest
+   group, so no mark can shadow a neighbour's hit area. */
+.agg-history .scatter-wrap svg * {
+  pointer-events: none;
+}
+
+.agg-history .scatter-wrap svg {
+  cursor: crosshair;
+}
+
+.agg-history .scatter-refline {
+  stroke-width: 1.5;
+  opacity: 0.6;
+}
+
+.agg-history .scatter-count {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.agg-history .scatter-linekey.vertical {
+  width: 2px;
+  height: 12px;
+}
+
+.agg-history .scatter-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.agg-history .scatter-tooltip.below {
+  transform: translate(-50%, 12px);
+}
+
+.agg-history .scatter-tooltip-value {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.agg-history .scatter-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+}
+
+.agg-history .scatter-linekey {
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+}
+
 /* Fulfillment section */
-.fulfillment-details {
+.agg-history .fulfillment-details {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   font-size: 0.875rem;
 }
 
-.fulfillment-details .detail-row {
+.agg-history .fulfillment-details .detail-row {
   display: flex;
   gap: 0.5rem;
   align-items: baseline;
 }
 
-.fulfillment-details .detail-label {
+.agg-history .fulfillment-details .detail-label {
   font-weight: 600;
   color: var(--text-secondary);
   min-width: 120px;
 }
 
-.fulfillment-details .detail-value {
+.agg-history .fulfillment-details .detail-value {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
   font-size: 0.8rem;
   word-break: break-all;
@@ -366,7 +539,7 @@
     flex-direction: column;
   }
 
-  .req-actual-container {
+  .agg-history .req-actual-container {
     grid-template-columns: 1fr;
   }
 
@@ -378,4 +551,26 @@
   .agg-history .slots-table td {
     padding: 0.4rem 0.3rem;
   }
+}
+
+/* Previously borrowed from Analytics.css (section cards, refresh spinner) */
+.agg-history .analytics-section {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.agg-history .analytics-section h2 {
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-primary);
+}
+
+.agg-history .spinning {
+  animation: spin 1s linear infinite;
 }

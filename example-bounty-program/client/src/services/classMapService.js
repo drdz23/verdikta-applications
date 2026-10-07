@@ -80,6 +80,22 @@ export class ClassMapService {
       const response = await api.get(`/api/classes/${classId}/models`);
       const data = response.data;
 
+      // A class outside the registry (status UNLISTED; older servers answered 404)
+      // is a custom class: classes are permissionless, so this is not an error.
+      if (data.success && data.status === 'UNLISTED') {
+        const custom = {
+          classId,
+          className: `Custom Class ${classId}`,
+          status: 'CUSTOM',
+          models: [],
+          modelsByProvider: {},
+          limits: null,
+          error: null
+        };
+        this._setCache(cacheKey, custom);
+        return custom;
+      }
+
       if (!data.success) {
         // Handle specific error cases
         if (data.status === 'EMPTY' || data.error?.toLowerCase().includes('not found')) {

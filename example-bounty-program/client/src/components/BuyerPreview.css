@@ -1,0 +1,8 @@
+.buyer-preview form { display: grid; gap: 1rem; }
+.buyer-preview > p, .buyer-preview [aria-live] > p { margin: 0 0 .75rem; }
+.buyer-preview label { display: block; }
+.buyer-preview textarea { display: block; width: 100%; box-sizing: border-box; padding: .75rem; font-family: monospace; }
+.buyer-preview select { margin-left: .5rem; padding: .4rem; max-width: 100%; }
+.buyer-preview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32rem; overflow: auto; }
+.buyer-preview button { justify-self: start; padding: .65rem 1rem; cursor: pointer; }
+.buyer-preview { scroll-margin-top: 6rem; }

@@ -1,0 +1,36 @@
+# Commission configuration and recovery
+
+Discovery produces an unquoted request/rubric draft, not a transaction-ready offer. Obtain supplier agreement and owner authorization for these additional terms. Never use fixture-only requests as real deliveries.
+
+For a discovery handoff, install both skill directories and run the discovery package's dependency installation. `verdikta-discover` returns an assessment input: print its preview with `node <discover>/scripts/preview.bundle.mjs input.json > draft.json` (the website's import shows the same bytes' SHA-256 for that input). Compute the exact file SHA-256 after owner review, set `workOrderDraftSha256` to that approved hash, and set `workOrderDraft` in the creator config to that preview file; copy its rubric/threshold into the owner-reviewed config, then supply actual supplier and price terms. The creator checks the request, rejects fixture-only work, recomputes the preview and binds OPEN/TARGETED intent in both directions, and includes its exact request plus a SHA-256 of the saved draft bytes in the evaluation description. Edits to the draft invalidate recovery identity. No draft grants authorization by itself.
+
+`create_bounty.js --config approved.json` requires:
+
+- title, description, rubricJson and juryNodes (validated against the selected live class).
+- classId, threshold (0–100, outside rubricJson), submissionWindowHours (whole hours).
+- procurementMode: TARGETED with targetHunter, or deliberately OPEN.
+- bountyAmount: decimal ETH string. Optional creatorDeterminationPayment and arbiterDeterminationPayment are decimal ETH strings; bountyAmount must equal their maximum.
+- creatorAssessmentWindowSeconds: integer seconds divisible by 3600; zero requires equal payments.
+- oracle: maxOracleFee and estimatedBaseCost as integer wei strings; alpha 0–1000; maxFeeBasedScaling 1–1000. Fee must be positive and within the live aggregator ceiling; base cost must be below fee.
+
+Use `examples/creator.json` as a synthetic shape example only. Its jury entries are placeholders: select real currently available models from `/api/classes/:id/models`; the script rejects placeholders. Rubric must-pass weights are zero; scored weights sum to 1 within 0.001. Every criterion needs unique id, description, numeric weight and boolean must. The proposed template threshold 85 is uncalibrated.
+
+The owner-reviewed `VERDIKTA_SPEND_POLICY` JSON has integer wei fields `maxValueWei`, `maxTotalWei`, `maxGasLimit`, `maxFeePerGasWei`, `maxPriorityFeePerGasWei`. The total is a cumulative upper bound on value + execution gas for this process; limits are not a persistent daily ledger. Base's separately charged L1 data fee is not an execution-gas cap. Do not grant ongoing unattended authority through repeated CLI invocations; use the hosted runtime's durable caps for that case. An owner should keep the policy outside model-writable workspace/configuration and review each commissioning intent.
+
+Never use `--yes` or `--confirm-spend` without approval for the specific action. `--yes` suppresses the prompt only after printing the exact transaction and caps. A dry-run still validates destination, chain, code, selector, arguments, gas, and policy, but does not broadcast. To preview a new task without any financial setup, use `verdikta-discover`.
+
+Creation reserves `approved.json.state.json` exclusively before API mutation. Preserve it privately even on failures: signed bytes authorize the exact transaction. `--resume approved.json.state.json` verifies the saved hash, signer, destination, calldata and caps and reads back at the receipt block with bounded retries before linking. If the RPC has no transaction/receipt, review and rebroadcast only the identical saved signed bytes; never choose a new nonce or create another API job. API_CREATED can resume first signing using its recorded local `apiCreatedAt`; server open time must be within 15 minutes of that timestamp and at least five usable submission minutes must remain before the assessment window. Review the shortened remaining time. Legacy BROADCAST_PENDING without a hash/raw transaction requires manual reconciliation.
+
+`--dry-run --prepared saved-state.json` accepts that state and its timestamp. A raw saved response or legacy state without a local timestamp must still be within 15 minutes of API creation. Neither form creates API state or signs; never alter a timestamp to bypass validation.
+
+A submission's `--state` file records hunter CID, prepare hash and submission ID. Right after a prepare, submit retries a lagging `getSubmission` read ("bad submissionId") for about 15 seconds; if the node is still behind, it exits with the exact `--resume ID --state …` command to run next. If prepare receipt tracking failed, recover the ID from that hash before using `--resume SUBMISSION_ID --state original-state.json`; the script validates the successful prepare transaction/event, hunter, CID, chain and recovered ID before repairing the missing state field. It then confirms tracking (bounded backoff for RPC lag) and starts the same prepared submission. `nextAction` guides waiting and recovery. A deferred payment must be claimed by its recipient through a separately authorized withdrawal, not by submitting more work.
+
+Deployment snapshot changes require maintainer review of live docs, bytecode and source compatibility; a remote address alone is not authorization. Generate ABI and rubric assets with `node scripts/sync_contract_assets.js` from the complete repository after compiling contracts with the secret-free local config.
+
+### Signed transactions that were not mined
+
+Submit preserves `prepareRawTransaction` and `prepareTxHash` even if transport fails. The current submit CLI does not rebroadcast an unmined prepare. Keep that state file; an authorized operator must reconcile the hash/receipt and nonce, then either rebroadcast those exact signed bytes after checking their terms or replace that nonce to abandon it. Once mined, recover the submission ID and use `--resume ID --state original-state.json`. Do not start over with a new state file while the signed prepare can still execute.
+
+Deleting state or waiting past the local five-minute review floor does not revoke a signed create. Its signature remains valid until the nonce is consumed; contract checks may subsequently revert it. To abandon an unmined create or prepare, the owner must separately authorize a replacement/cancellation transaction using the same sender and nonce on the same chain, and wait for confirmation. If the nonce is already used, inspect the original hash and the transaction that consumed it before proceeding; a nonce-too-low RPC error is not permission to create another bounty. No cancellation transaction is sent by these helpers.
+
+The five-minute usable-time check is a minimum safety floor, not a recommended task duration. Review the displayed remaining time against the actual work before approving a delayed create.

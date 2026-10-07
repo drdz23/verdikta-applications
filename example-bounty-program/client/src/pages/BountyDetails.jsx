@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { renderMarkdownSafe } from '../utils/markdownPreview';
 import JuryModels from '../components/JuryModels';
+import ClassTrustNote from '../components/ClassTrustNote';
 import { useToast } from '../components/Toast';
 import { apiService } from '../services/api';
 import { walletService } from '../services/wallet';
@@ -2354,6 +2355,15 @@ function BountyDetails({ walletState }) {
             </span>
           </div>
         </div>
+        {isOpen && !effectivelyExpired && !notOnChain && (job?.onChain || job?.syncedFromBlockchain) && (
+          <p className="locked-terms-note">
+            <Lock size={14} className="inline-icon" />{' '}
+            <strong>Locked on-chain:</strong> the escrow contract has no way to change these terms or
+            return the funds to the creator before the deadline.
+            {job?.creatorAssessmentWindowSize > 0 && ' The creator may approve a submission early; they cannot reject one.'}
+            {' '}<Link to="/#guarantees">How this is enforced</Link>
+          </p>
+        )}
       </div>
 
       {/* Targeted Bounty Notice */}
@@ -2428,7 +2438,7 @@ function BountyDetails({ walletState }) {
             <div style={{ marginTop: '0.75rem' }}>
               <button
                 type="button"
-                className="btn btn-secondary btn-with-icon"
+                className="btn btn-outline btn-sm btn-with-icon"
                 onClick={loadTaskSpec}
                 disabled={taskSpecLoading}
               >
@@ -2496,7 +2506,9 @@ function BountyDetails({ walletState }) {
           bountyId={bountyId}
           juryNodes={job.juryNodes}
           evaluationCid={job.evaluationCid}
-        />
+        >
+          <ClassTrustNote jobId={bountyId} classId={job.classId ?? 128} />
+        </JuryModels>
       )}
 
       {/* Actions Section */}

@@ -5,9 +5,7 @@ import {
   HelpCircle,
   AlertTriangle,
   Bot,
-  Zap,
   Lock,
-  BarChart3,
   Clock,
   RefreshCw,
   Trophy,
@@ -19,8 +17,11 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
+  FileLock2,
+  Eye,
 } from 'lucide-react';
 import { apiService } from '../services/api';
+import { classMapService } from '../services/classMapService';
 import { config } from '../config';
 import {
   BountyStatus,
@@ -55,6 +56,12 @@ const getExplorerUrl = () => {
   return network.explorer;
 };
 
+// Sourcify's listing of the escrow's verified source for the current network
+const getVerifiedSourceUrl = () => {
+  const network = config.networks[config.network] || config.networks['base-sepolia'];
+  return `https://repo.sourcify.dev/${network.chainId}/${config.bountyEscrowAddress}`;
+};
+
 // Format a positive USD amount with thousands separators and 2 decimals.
 // Returns null for non-positive/invalid values so callers can hide the USD note.
 const formatUsd = (value) => {
@@ -76,8 +83,11 @@ function Home({ walletState }) {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
-  // Recent ETH/USD price (CoinGecko, 1-min server cache) for approximate payout values
+  // Recent ETH/USD price (server proxy: Coinbase, CoinGecko fallback; 1-min cache) for approximate payout values
   const [ethPrice, setEthPrice] = useState(0);
+  // Class IDs in the Verdikta class registry; bounties on any other class get a
+  // "Custom class" badge (classes are permissionless). null until loaded.
+  const [registryClassIds, setRegistryClassIds] = useState(null);
 
   // Refs for auto-refresh and scroll
   const autoRefreshIntervalRef = useRef(null);
@@ -136,6 +146,16 @@ function Home({ walletState }) {
         console.warn('Failed to fetch ETH price:', err);
       }
     })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    classMapService.getClasses()
+      .then((classes) => {
+        if (!cancelled) setRegistryClassIds(new Set((classes || []).map((c) => Number(c.id))));
+      })
+      .catch(() => { /* no badge without the registry list */ });
     return () => { cancelled = true; };
   }, []);
 
@@ -234,7 +254,7 @@ function Home({ walletState }) {
       <div className="hero">
         <h1>AI-Powered Bounty Program</h1>
         <p className="hero-subtitle">
-          Create bounties, submit work, get evaluated by AI, earn ETH automatically
+          Bounties held in escrow and judged by AI. Submit work, pass the rubric, earn ETH automatically.
         </p>
         <div className="hero-actions">
           <Link to="/create" className="btn btn-primary btn-lg btn-with-icon">
@@ -246,6 +266,16 @@ function Home({ walletState }) {
             How It Works
           </a>
         </div>
+        <ul className="hero-guarantees">
+          <li><Lock size={14} /> Funds held by a smart contract</li>
+          <li><FileLock2 size={14} /> No cancel or edit function</li>
+          <li><Bot size={14} /> Judged by an AI jury, not the creator</li>
+          <li>
+            <a href="https://verdikta.org/how-it-works" target="_blank" rel="noopener noreferrer">
+              How Verdikta judges <ExternalLink size={12} />
+            </a>
+          </li>
+        </ul>
       </div>
 
       <section className="bounties-section" ref={bountyGridRef}>
@@ -260,7 +290,7 @@ function Home({ walletState }) {
             {ethPrice > 0 && (
               <span
                 className="eth-rate-note"
-                title="Approximate USD values use a recent ETH price from CoinGecko"
+                title="Approximate USD values use a recent ETH/USD spot price"
               >
                 ETH ≈ ${formatUsd(ethPrice)}
               </span>
@@ -336,7 +366,7 @@ function Home({ walletState }) {
           <>
             <div className="bounty-grid">
               {paginatedJobs.map(job => (
-                <JobCard key={job.jobId} job={job} ethPrice={ethPrice} />
+                <JobCard key={job.jobId} job={job} ethPrice={ethPrice} registryClassIds={registryClassIds} />
               ))}
             </div>
             <div className="pagination">
@@ -393,48 +423,82 @@ function Home({ walletState }) {
           </div>
           <div className="step">
             <div className="step-number">3</div>
-            <h3>Review &amp; Evaluate</h3>
-            <p>Creator can approve directly, or an AI jury grades submissions against the rubric</p>
+            <h3>AI Jury Evaluates</h3>
+            <p>An AI jury grades each submission against the rubric. Where a bounty has an approval window, the creator can approve early</p>
           </div>
           <div className="step">
             <div className="step-number">4</div>
             <h3>Auto Payment</h3>
-            <p>Approved submissions win ETH automatically from escrow</p>
+            <p>Passing work is paid in ETH automatically from escrow</p>
           </div>
         </div>
       </section>
 
-      <section className="features">
-        <h2>Why Use Verdikta Bounties?</h2>
+      <section id="guarantees" className="features">
+        <h2>Trustless by Design</h2>
         <div className="feature-grid">
           <div className="feature">
-            <div className="feature-icon"><Bot size={32} /></div>
-            <h3>AI-Powered</h3>
-            <p>Multiple AI models evaluate submissions for fairness and accuracy</p>
-          </div>
-          <div className="feature">
-            <div className="feature-icon"><Zap size={32} /></div>
-            <h3>Automatic</h3>
-            <p>No manual review needed - payments happen automatically</p>
-          </div>
-          <div className="feature">
             <div className="feature-icon"><Lock size={32} /></div>
-            <h3>Trustless</h3>
-            <p>ETH locked in smart contract escrow until winner is determined</p>
+            <h3>Funds Locked</h3>
+            <p>
+              The payout is held by a smart contract from the moment a bounty is created. It is
+              released only to a winning hunter, or back to the creator after the deadline if
+              nobody wins.
+            </p>
           </div>
           <div className="feature">
-            <div className="feature-icon"><BarChart3 size={32} /></div>
-            <h3>Transparent</h3>
-            <p>All evaluations and scores are publicly verifiable</p>
+            <div className="feature-icon"><FileLock2 size={32} /></div>
+            <h3>Terms Fixed</h3>
+            <p>
+              The escrow contract has no function to cancel or edit a bounty. Payout, criteria,
+              jury, pass threshold and deadline are set once, at creation.
+            </p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon"><Bot size={32} /></div>
+            <h3>Judged by AI</h3>
+            <p>
+              Work is graded against the published rubric by a jury of AI models on the Verdikta
+              arbiter network. The creator cannot reject work; where a bounty has an approval
+              window, they can only approve early.
+            </p>
+          </div>
+          <div className="feature">
+            <div className="feature-icon"><Eye size={32} /></div>
+            <h3>Verifiable</h3>
+            <p>
+              The contract source is public and verified, and every score and payout is recorded
+              on-chain.
+            </p>
           </div>
         </div>
+        <p className="guarantees-links">
+          {config.bountyEscrowAddress && (
+            <>
+              <a href={`${getExplorerUrl()}/address/${config.bountyEscrowAddress}`} target="_blank" rel="noopener noreferrer">
+                Escrow contract <ExternalLink size={12} />
+              </a>
+              <a href={getVerifiedSourceUrl()} target="_blank" rel="noopener noreferrer">
+                Verified source <ExternalLink size={12} />
+              </a>
+            </>
+          )}
+          <a href="https://verdikta.org/how-it-works" target="_blank" rel="noopener noreferrer">
+            How Verdikta works <ExternalLink size={12} />
+          </a>
+        </p>
+        <p className="guarantees-caveat">
+          These guarantees are how the system is designed, and are enforced by open-source contract
+          code that anyone can read and verify. Like all software, smart contracts can contain bugs,
+          and AI judgment can be wrong. Use at your own risk.
+        </p>
       </section>
     </div>
   );
 }
 
 // Job Card Component
-function JobCard({ job, ethPrice }) {
+function JobCard({ job, ethPrice, registryClassIds }) {
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   // Oracle-pool check (arbiters eligible under the bounty's oracle settings) — runs
@@ -605,6 +669,14 @@ function JobCard({ job, ethPrice }) {
                 Targeted
               </span>
             )}
+            {registryClassIds && job.classId != null && !registryClassIds.has(Number(job.classId)) && (
+              <span
+                className="badge badge-custom-class"
+                title={`Class ${job.classId} isn't in the Verdikta class registry, so its jury wasn't checked against a model list. Open the bounty to see who can evaluate it.`}
+              >
+                Custom class
+              </span>
+            )}
             {job.creatorAssessmentWindowSize > 0 && (
               <span
                 className="badge badge-windowed"
@@ -633,7 +705,7 @@ function JobCard({ job, ethPrice }) {
                 title={isAwarded
                   ? 'Awarded — this bounty has been paid out and is no longer actionable.'
                   : isClosed
-                    ? 'Closed — this bounty was cancelled without a winner; funds returned.'
+                    ? 'Closed — this bounty expired without a winner; funds returned to the creator.'
                     : 'Expired — submission window has passed.'}
               >
                 <Check size={12} style={{ verticalAlign: 'middle', marginRight: '2px' }} />
@@ -734,7 +806,7 @@ function JobCard({ job, ethPrice }) {
       </p>
       <div className="bounty-footer">
         <div className="payout">
-          <span className="label">Payout:</span>
+          <span className="label">Payout</span>
           <span className="amount">
             {job.bountyAmount} ETH
             {ethPrice > 0 && formatUsd(Number(job.bountyAmount) * ethPrice) && (
@@ -745,7 +817,7 @@ function JobCard({ job, ethPrice }) {
           </span>
         </div>
         <div className="submissions">
-          <span className="label">Submissions:</span>
+          <span className="label">Submissions</span>
           <span className="count">{job.submissionCount || 0}</span>
           {hasPendingEvaluation && (!isExpired || hasIncompleteEvaluation || hasAcceptedPendingClaim) && (
             <span
@@ -769,10 +841,11 @@ function JobCard({ job, ethPrice }) {
           <span className="value">{job.jobId}</span>
         </div>
         <div className="threshold">
-          <span className="label">Threshold:</span>
+          <span className="label">Threshold</span>
           <span className="value">{job.threshold}%</span>
         </div>
         <div className={`time-remaining ${isClosingSoon ? 'warning' : ''} ${isCritical ? 'critical' : ''} ${(isExpired || isClosed) ? 'closed' : ''}`}>
+          <span className="label">{(isAwarded || isClosed || isExpired) ? 'Status' : 'Time left'}</span>
           {isAwarded ? (
             <span><Trophy size={14} className="inline-icon" /> Winner paid</span>
           ) : isClosed ? (

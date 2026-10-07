@@ -1,0 +1,9 @@
+[
+ {"tag": "h1b-mt02-s1", "case": "MT02", "turns": ["MT02.t1.txt", "MT02.t2.txt"]},
+ {"tag": "h1b-cl01-s1", "case": "CL01", "turns": ["CL01.txt"]},
+ {"tag": "h1b-cf03-s2", "case": "CF03", "turns": ["CF03.txt"]},
+ {"tag": "h1b-mt02-s2", "case": "MT02", "turns": ["MT02.t1.txt", "MT02.t2.txt"]},
+ {"tag": "h1b-ch01-s1", "case": "CH01", "turns": ["CH01.txt"]},
+ {"tag": "h1b-cf03-s3", "case": "CF03", "turns": ["CF03.txt"]},
+ {"tag": "h1b-mt02-s3", "case": "MT02", "turns": ["MT02.t1.txt", "MT02.t2.txt"]}
+]

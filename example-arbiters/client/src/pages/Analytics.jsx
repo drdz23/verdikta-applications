@@ -260,6 +260,379 @@ const renderReliabilitySection = (windowLabel, hData, hLoading, hError, alertsBy
   </section>
 );
 
+// ---- Response Timing section (per-window). Commit time = seconds from the
+// request landing on-chain to the operator's commit; reveal time = seconds from
+// the reveal request dispatched to the slot to the operator's reveal. Both come
+// from block deltas (Base: fixed 2s blocks), so they are exact to the block.
+const TIMING_COLORS = { commit: '#2a78d6', reveal: '#eb6834' };
+
+const fmtSec = (v) => {
+  if (v == null) return '—';
+  const s = Math.round(v);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}m ${String(r).padStart(2, '0')}s`;
+};
+
+// avg · min · max seconds with the average emphasized.
+const secTriple = (t) => {
+  if (!t || !t.count) return <span className="gas-muted">—</span>;
+  return (
+    <span className="gas-triple">
+      <strong className="med">{fmtSec(t.avgSec)}</strong> · {fmtSec(t.minSec)} · {fmtSec(t.maxSec)}
+    </span>
+  );
+};
+
+// Cumulative commit / reveal stats across every operator, from the raw
+// samples (so the average is sample-weighted, not an average of averages).
+const overallTiming = (timing) => {
+  const acc = { commit: [], reveal: [] };
+  for (const [, kind, sec] of timing?.points || []) acc[kind === 'c' ? 'commit' : 'reveal'].push(sec);
+  const summarize = (arr) => {
+    if (!arr.length) return { count: 0, avgSec: null, minSec: null, maxSec: null };
+    let sum = 0, min = Infinity, max = -Infinity;
+    for (const v of arr) { sum += v; if (v < min) min = v; if (v > max) max = v; }
+    return { count: arr.length, avgSec: Math.round((sum / arr.length) * 10) / 10, minSec: min, maxSec: max };
+  };
+  return { commit: summarize(acc.commit), reveal: summarize(acc.reveal) };
+};
+
+// Tick step (seconds) giving roughly 4–8 ticks across the axis.
+const niceTickStep = (maxSeconds) => {
+  const steps = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+  for (const st of steps) if (maxSeconds / st <= 8) return st;
+  return 3600 * Math.ceil(maxSeconds / 3600 / 8);
+};
+
+// Deterministic pseudo-random in [0,1) from an index, so the vertical jitter
+// of a dot is stable across renders.
+const jitter = (i) => ((i * 9301 + 49297) % 233280) / 233280;
+
+// Cluster (strip) chart: one row per operator, every commit and reveal as a
+// translucent dot at its response time. Dense by design — no hover layer; the
+// table above carries the numbers. Extreme outliers would flatten the cluster,
+// so the axis stops at the 98th percentile when the max is far beyond it and
+// the overflow dots are pinned to the right edge as small arrows.
+function TimingCluster({ timing }) {
+  const [hover, setHover] = useState(null);
+  const svgRef = useRef(null);
+  const ops = timing?.operators || [];
+  const pts = timing?.points || [];
+  if (!ops.length || !pts.length) return null;
+
+  const secs = pts.map((p) => p[2]).sort((a, b) => a - b);
+  const max = secs[secs.length - 1];
+  const p98 = secs[Math.floor(0.98 * (secs.length - 1))];
+  const clamp = max > 2.5 * Math.max(p98, 10);
+  const axisMaxRaw = Math.max(10, clamp ? p98 : max);
+  const tick = niceTickStep(axisMaxRaw);
+  const axisMax = Math.ceil(axisMaxRaw / tick) * tick;
+  const overflow = pts.filter((p) => p[2] > axisMax).length;
+
+  const margin = { top: 10, right: 22, bottom: 36, left: 112 };
+  const rowH = 30;
+  const width = 720;
+  const plotW = width - margin.left - margin.right;
+  const plotH = ops.length * rowH;
+  const height = margin.top + plotH + margin.bottom;
+  const xScale = (v) => margin.left + (Math.min(v, axisMax) / axisMax) * plotW;
+  const yRow = (i) => margin.top + i * rowH + rowH / 2;
+  const ticks = [];
+  for (let v = 0; v <= axisMax; v += tick) ticks.push(v);
+
+  // Average markers: one per operator per kind (commit / reveal) with a value.
+  const markers = [];
+  ops.forEach((o, i) => {
+    for (const kind of ['commit', 'reveal']) {
+      const st = o[kind];
+      if (st && st.count > 0 && st.avgSec != null) {
+        markers.push({ operator: o.operator, kind, avg: st.avgSec, sd: st.stdDevSec, n: st.count, cx: xScale(st.avgSec), cy: yRow(i), clipped: st.avgSec > axisMax });
+      }
+    }
+  });
+
+  // Hover resolves to the nearest marker (viewBox units) from the svg root, so
+  // two markers close together can't shadow each other.
+  const MARKER_HOVER_RADIUS = 12;
+  const onPointerMove = (e) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const px = (e.clientX - rect.left) * (width / rect.width);
+    const py = (e.clientY - rect.top) * (height / rect.height);
+    let best = null, bestD = Infinity;
+    markers.forEach((m, mi) => { const d = Math.hypot(m.cx - px, m.cy - py); if (d < bestD) { bestD = d; best = mi; } });
+    if (best !== null && bestD <= MARKER_HOVER_RADIUS) {
+      if (!hover || hover.mi !== best) setHover({ mi: best, m: markers[best] });
+    } else if (hover) {
+      setHover(null);
+    }
+  };
+
+  return (
+    <div className="timing-cluster">
+      <div className="timing-legend">
+        <span className="timing-legend-item"><span className="timing-swatch" style={{ background: TIMING_COLORS.commit }} />Commit (after request)</span>
+        <span className="timing-legend-item"><span className="timing-swatch" style={{ background: TIMING_COLORS.reveal }} />Reveal (after reveal request)</span>
+        <span className="timing-legend-item">
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            <path d="M4.2,4.2 L9.8,9.8 M9.8,4.2 L4.2,9.8" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+          Average (hover for std dev)
+        </span>
+        <span className="timing-legend-note">{pts.length.toLocaleString()} samples</span>
+      </div>
+      <div className="timing-cluster-wrap">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        role="img"
+        aria-label="Commit and reveal response times per operator"
+        ref={svgRef}
+        onPointerMove={onPointerMove}
+        onPointerLeave={() => setHover(null)}
+      >
+        {ops.map((o, i) => (
+          <g key={o.operator}>
+            <line x1={margin.left} x2={margin.left + plotW} y1={yRow(i)} y2={yRow(i)} className="timing-rowline" />
+            <text x={margin.left - 8} y={yRow(i)} className="timing-ylabel" dominantBaseline="middle" textAnchor="end">{shortAddr(o.operator)}</text>
+          </g>
+        ))}
+        {ticks.map((v) => (
+          <g key={v}>
+            <line x1={xScale(v)} x2={xScale(v)} y1={margin.top} y2={margin.top + plotH} className="timing-grid" />
+            <text x={xScale(v)} y={margin.top + plotH + 16} className="timing-xlabel" textAnchor="middle">{fmtSec(v)}</text>
+          </g>
+        ))}
+        <text x={margin.left + plotW / 2} y={height - 4} className="timing-xtitle" textAnchor="middle">
+          response time{clamp ? ` (axis capped at 98th percentile; ${overflow} slower response${overflow === 1 ? '' : 's'} pinned at right)` : ''}
+        </text>
+        {pts.map((p, i) => {
+          const [oi, kind, sec] = p;
+          const color = kind === 'c' ? TIMING_COLORS.commit : TIMING_COLORS.reveal;
+          const cy = yRow(oi) + (jitter(i) - 0.5) * (rowH - 10);
+          if (sec > axisMax) {
+            const x = margin.left + plotW + 4;
+            return <path key={i} d={`M${x},${cy - 4} L${x + 7},${cy} L${x},${cy + 4} Z`} fill={color} fillOpacity={0.8} />;
+          }
+          return <circle key={i} cx={xScale(sec)} cy={cy} r={3} fill={color} fillOpacity={0.5} />;
+        })}
+        {/* Average markers: circle with an X, drawn over the dots */}
+        {markers.map((m, mi) => {
+          const color = TIMING_COLORS[m.kind];
+          const r = hover && hover.mi === mi ? 7 : 6;
+          const k = r * 0.55;
+          return (
+            <g key={`${m.operator}-${m.kind}`} className="timing-avg" tabIndex={0}
+              onFocus={() => setHover({ mi, m })} onBlur={() => setHover(null)}>
+              <circle cx={m.cx} cy={m.cy} r={r + 2} fill="var(--bg)" />
+              <circle cx={m.cx} cy={m.cy} r={r} fill="var(--bg)" stroke={color} strokeWidth={2} />
+              <path d={`M${m.cx - k},${m.cy - k} L${m.cx + k},${m.cy + k} M${m.cx + k},${m.cy - k} L${m.cx - k},${m.cy + k}`} stroke={color} strokeWidth={2} />
+            </g>
+          );
+        })}
+      </svg>
+      {hover && (
+        <div
+          className={`timing-tooltip${hover.m.cy < height / 2 ? ' below' : ''}`}
+          style={{ left: `${(hover.m.cx / width) * 100}%`, top: `${(hover.m.cy / height) * 100}%` }}
+        >
+          <div className="timing-tooltip-value">avg {fmtSec(hover.m.avg)}</div>
+          <div className="timing-tooltip-row">
+            <span className="timing-swatch" style={{ background: TIMING_COLORS[hover.m.kind] }} />
+            {hover.m.kind === 'commit' ? 'Commit' : 'Reveal'} · σ {hover.m.sd != null ? fmtSec(hover.m.sd) : '—'} · n={hover.m.n}
+          </div>
+          <div className="timing-tooltip-row">{shortAddr(hover.m.operator)}{hover.m.clipped ? ' · beyond axis' : ''}</div>
+        </div>
+      )}
+      </div>
+    </div>
+  );
+}
+
+// Daily average commit / reveal time over the window: one dot per day that has
+// samples, dots joined by a line, with a crosshair tooltip on the nearest day.
+function TimingDailyChart({ daily, generatedAt }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const svgRef = useRef(null);
+  if (!daily || daily.length < 2) return null;
+  const anyData = daily.some((d) => d.avgCommitSec != null || d.avgRevealSec != null);
+  if (!anyData) return null;
+
+  const margin = { top: 12, right: 20, bottom: 30, left: 56 };
+  const width = 720;
+  const plotH = 118; // ~25% shorter than the original 170
+  const height = margin.top + plotH + margin.bottom;
+  const plotW = width - margin.left - margin.right;
+  const n = daily.length;
+  const xAt = (i) => margin.left + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+
+  const vals = daily.flatMap((d) => [d.avgCommitSec, d.avgRevealSec]).filter((v) => v != null);
+  const yMaxRaw = Math.max(10, ...vals);
+  const yTick = niceTickStep(yMaxRaw * 1.6); // ~4–5 ticks: the plot is short
+  const yMax = Math.ceil(yMaxRaw / yTick) * yTick;
+  const yAt = (v) => margin.top + plotH - (v / yMax) * plotH;
+  const yTicks = [];
+  for (let v = 0; v <= yMax; v += yTick) yTicks.push(v);
+
+  // Day labels: the newest bucket is today (relative to when the scan ran).
+  const anchor = generatedAt ? new Date(generatedAt) : new Date();
+  const labelFor = (d) => {
+    const dt = new Date(anchor.getTime() - d.daysAgo * 86400000);
+    return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  const linePath = (key) => {
+    let path = '';
+    let pen = false;
+    daily.forEach((d, i) => {
+      const v = d[key];
+      if (v == null) return;
+      path += `${pen ? 'L' : 'M'}${xAt(i).toFixed(1)},${yAt(v).toFixed(1)} `;
+      pen = true;
+    });
+    return path;
+  };
+
+  const onPointerMove = (e) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const px = (e.clientX - rect.left) * (width / rect.width);
+    let best = 0, bestD = Infinity;
+    for (let i = 0; i < n; i++) { const d = Math.abs(xAt(i) - px); if (d < bestD) { bestD = d; best = i; } }
+    if (hoverIdx !== best) setHoverIdx(best);
+  };
+
+  const h = hoverIdx != null ? daily[hoverIdx] : null;
+  const series = [
+    { key: 'avgCommitSec', countKey: 'commits', label: 'Commit', color: TIMING_COLORS.commit },
+    { key: 'avgRevealSec', countKey: 'reveals', label: 'Reveal', color: TIMING_COLORS.reveal },
+  ];
+
+  return (
+    <div className="timing-daily">
+      <div className="timing-legend">
+        <span className="timing-legend-item"><span className="timing-linekey" style={{ background: TIMING_COLORS.commit }} />Avg commit time</span>
+        <span className="timing-legend-item"><span className="timing-linekey" style={{ background: TIMING_COLORS.reveal }} />Avg reveal time</span>
+        <span className="timing-legend-note">per day · all operators</span>
+      </div>
+      <div className="timing-cluster-wrap">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          width="100%"
+          role="img"
+          aria-label="Average commit and reveal time per day"
+          ref={svgRef}
+          onPointerMove={onPointerMove}
+          onPointerLeave={() => setHoverIdx(null)}
+        >
+          {yTicks.map((v) => (
+            <g key={v}>
+              <line x1={margin.left} x2={margin.left + plotW} y1={yAt(v)} y2={yAt(v)} className="timing-grid" />
+              <text x={margin.left - 8} y={yAt(v)} className="timing-ylabel timing-ylabel-num" dominantBaseline="middle" textAnchor="end">{fmtSec(v)}</text>
+            </g>
+          ))}
+          {daily.map((d, i) => (
+            <text key={i} x={xAt(i)} y={margin.top + plotH + 16} className="timing-xlabel" textAnchor="middle">{labelFor(d)}</text>
+          ))}
+          {h && <line x1={xAt(hoverIdx)} x2={xAt(hoverIdx)} y1={margin.top} y2={margin.top + plotH} className="timing-crosshair" />}
+          {series.map((sr) => (
+            <g key={sr.key}>
+              <path d={linePath(sr.key)} fill="none" stroke={sr.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+              {daily.map((d, i) => d[sr.key] != null && (
+                <circle key={i} cx={xAt(i)} cy={yAt(d[sr.key])} r={hoverIdx === i ? 5 : 4} fill={sr.color} stroke="var(--bg)" strokeWidth={2} />
+              ))}
+            </g>
+          ))}
+        </svg>
+        {h && (
+          <div
+            className="timing-tooltip below"
+            style={{ left: `${(xAt(hoverIdx) / width) * 100}%`, top: `${(margin.top / height) * 100}%` }}
+          >
+            <div className="timing-tooltip-value">{labelFor(h)}</div>
+            {series.map((sr) => (
+              <div key={sr.key} className="timing-tooltip-row">
+                <span className="timing-linekey" style={{ background: sr.color }} />
+                {h[sr.key] != null ? <><strong>{fmtSec(h[sr.key])}</strong>&nbsp;{sr.label} · n={h[sr.countKey]}</> : <>{sr.label}: no samples</>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const renderTimingSection = (windowLabel, hData, hLoading, hError) => (
+  <section className="analytics-section">
+    <h2 title="How quickly each operator responds. Commit time = seconds from the evaluation request landing on-chain to this operator's commit. Reveal time = seconds from the reveal request being dispatched to the operator's reveal. Measured in whole blocks (2s each on Base)."><Clock size={20} className="inline-icon" /> Response Timing · {windowLabel}</h2>
+    <div className="section-content">
+      {hLoading && !hData ? (
+        <div className="loading"><div className="spinner"></div><p>Scanning aggregator events…</p></div>
+      ) : hError ? (
+        <div className="info-banner"><AlertTriangle size={16} /><span>{hError}</span></div>
+      ) : hData?.scanFailed ? (
+        <ScanFailedBanner hData={hData} />
+      ) : hData && !hData.timing ? (
+        <div className="empty-state"><Clock size={32} /><p>Timing data is still being collected — refresh shortly.</p></div>
+      ) : hData?.timing?.operators?.length > 0 ? (
+        <>
+          <div className="stats-table timing-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Operator</th>
+                  <th className="tooltip-header" title="Commits with a measurable time (the request was inside the window)">Commits</th>
+                  <th className="tooltip-header" title="Seconds from the request landing on-chain to this operator's commit: average · min · max">Commit time (avg · min · max)</th>
+                  <th className="tooltip-header" title="Reveals with a measurable time (the reveal request was inside the window)">Reveals</th>
+                  <th className="tooltip-header" title="Seconds from the reveal request dispatched to the slot to this operator's reveal: average · min · max">Reveal time (avg · min · max)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hData.timing.operators.map((o) => (
+                  <tr key={o.operator}>
+                    <td><code>{shortAddr(o.operator)}</code></td>
+                    <td>{o.commit.count}</td>
+                    <td>{secTriple(o.commit)}</td>
+                    <td>{o.reveal.count}</td>
+                    <td>{secTriple(o.reveal)}</td>
+                  </tr>
+                ))}
+                {(() => {
+                  const all = overallTiming(hData.timing);
+                  return (
+                    <tr className="timing-total-row" title="All operators combined. The average is over every sample, not an average of the per-operator averages.">
+                      <td><strong>All operators</strong></td>
+                      <td><strong>{all.commit.count}</strong></td>
+                      <td>{secTriple(all.commit)}</td>
+                      <td><strong>{all.reveal.count}</strong></td>
+                      <td>{secTriple(all.reveal)}</td>
+                    </tr>
+                  );
+                })()}
+              </tbody>
+            </table>
+          </div>
+          <TimingCluster timing={hData.timing} />
+          <p className="health-footnote">
+            Every commit and reveal in the window is one dot; its position is the operator's response time. Times are whole blocks (2s each on Base). Commit time is measured from the evaluation request; reveal time from the reveal request dispatched to that arbiter.
+          </p>
+          {hData.windowDays > 1 && <TimingDailyChart daily={hData.timing.daily} generatedAt={hData.generatedAt} />}
+        </>
+      ) : (
+        <div className="empty-state"><Clock size={32} /><p>No oracle activity in the window</p></div>
+      )}
+    </div>
+  </section>
+);
+
 // Gas-tracking display helpers (commit vs reveal gas per arbiter response).
 const GAS_COLORS = { commit: '#3b82f6', reveal: '#8b5cf6' };
 const fmtGas = (n) => (n == null ? '—' : Math.round(n).toLocaleString());
@@ -572,7 +945,7 @@ function Analytics() {
     labels: gasTrend.map(d => (d.daysAgo === 0 ? 'now' : `${d.daysAgo}d`)),
     datasets: [
       { label: 'Commit', data: gasTrend.map(d => d.avgGasCommit), backgroundColor: GAS_COLORS.commit },
-      { label: 'Reveal (all)', data: gasTrend.map(d => d.avgGasReveal), backgroundColor: GAS_COLORS.reveal }
+      { label: 'Reveal (all: normal + finalizing)', data: gasTrend.map(d => d.avgGasReveal), backgroundColor: GAS_COLORS.reveal }
     ]
   } : null;
   const gasChartOptions = {
@@ -879,6 +1252,10 @@ function Analytics() {
       {renderReliabilitySection('Last 14 days', healthData, healthLoading, healthError, alertsByOp)}
       {renderReliabilitySection('Last 24 hours', health24Data, health24Loading, health24Error, alertsByOp)}
 
+      {/* Response Timing — same two windows, table + cluster chart */}
+      {renderTimingSection('Last 14 days', healthData, healthLoading, healthError)}
+      {renderTimingSection('Last 24 hours', health24Data, health24Loading, health24Error)}
+
       {/* Gas per Commit / Reveal Section */}
       <section className="analytics-section">
         <h2 title="Gas each arbiter spends per response. A commit and a reveal are two separate transactions; their gas varies, so min · median · max is shown. The transaction that completes a round also runs the aggregation, so its (much higher) gas is reported separately as finalization and excluded from the per-operator reveal stats."><Fuel size={20} className="inline-icon" /> Gas per Commit / Reveal</h2>
@@ -922,7 +1299,7 @@ function Analytics() {
                 </table>
               </div>
               <p className="health-footnote">
-                Gas units (price-independent across runs). A <em>finalizing reveal</em> is the response that also runs the aggregation (one per completed round), costing far more than a normal one. The <strong>Reveal</strong> and <strong>Finalizing</strong> columns show them separately; the bar chart and avg cost <strong>blend both</strong> (≈¼ of reveals are finalizing) for the true per-reveal figure.
+                Gas units (price-independent across runs). A <em>finalizing reveal</em> is the response that also runs the aggregation (one per completed round), costing far more than a normal one. The <strong>Reveal</strong> and <strong>Finalizing</strong> columns show them separately. The bar chart&rsquo;s <strong>Reveal (all)</strong> series and the <strong>Avg cost</strong> column <strong>blend both</strong> — normal and finalizing reveals together (≈¼ of reveals are finalizing) — for the true per-reveal figure, so the chart&rsquo;s reveal bar sits above the Reveal column&rsquo;s median. The chart is also a network-wide daily <em>average</em> across all operators, not a per-operator median.
                 {gasFinal ? <> <strong>Highest finalizing reveal seen: {fmtGas(gasFinal.gasUsed.max)} gas</strong> — a node's Chainlink job-spec <code>gasLimit</code> must exceed this to avoid an out-of-gas failure during finalization.</> : ''}
                 {gasScan?.partial ? ' Receipt backfill incomplete — some gas data is still being collected; refresh shortly.' : ''}
               </p>
@@ -1135,7 +1512,7 @@ function Analytics() {
                   </div>
                   <div className="config-item">
                     <span className="config-label">Max Oracle Fee</span>
-                    <span className="config-value">{data.system.aggregatorConfig.maxOracleFee} LINK</span>
+                    <span className="config-value">{data.system.aggregatorConfig.maxOracleFee} ETH</span>
                   </div>
                 </div>
               </div>

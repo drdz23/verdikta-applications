@@ -614,3 +614,133 @@
   max-width: 34rem;
 }
 .analytics .empty-state-hint code { font-size: 0.78rem; }
+
+/* Response Timing — per-operator cluster chart */
+.analytics .timing-table {
+  margin-top: 0;
+}
+.analytics .timing-cluster {
+  margin-top: 1.25rem;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: var(--bg-subtle, #f9fafb);
+  padding: 0.9rem 1rem 0.5rem;
+}
+.analytics .timing-cluster svg {
+  display: block;
+  height: auto;
+}
+.analytics .timing-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+}
+.analytics .timing-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.analytics .timing-legend-note {
+  margin-left: auto;
+  color: var(--text-muted, #6b7280);
+}
+.analytics .timing-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.analytics .timing-rowline,
+.analytics .timing-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.analytics .timing-ylabel {
+  font-family: monospace;
+  font-size: 11px;
+  fill: var(--text-secondary);
+}
+.analytics .timing-xlabel {
+  font-size: 10px;
+  fill: var(--text-secondary);
+}
+.analytics .timing-xtitle {
+  font-size: 10px;
+  fill: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.analytics .timing-cluster-wrap {
+  position: relative;
+}
+.analytics .timing-cluster svg * {
+  pointer-events: none;
+}
+.analytics .timing-avg {
+  outline: none;
+}
+.analytics .timing-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 14px));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+.analytics .timing-tooltip.below {
+  transform: translate(-50%, 14px);
+}
+.analytics .timing-tooltip-value {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.analytics .timing-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+}
+.analytics .timing-total-row td {
+  border-top: 2px solid var(--border);
+  background: var(--bg-subtle, #f9fafb);
+}
+.analytics .timing-daily {
+  margin-top: 1.25rem;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  background: var(--bg-subtle, #f9fafb);
+  padding: 0.9rem 1rem 0.5rem;
+}
+.analytics .timing-daily svg {
+  display: block;
+  height: auto;
+}
+.analytics .timing-daily svg * {
+  pointer-events: none;
+}
+.analytics .timing-linekey {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+.analytics .timing-ylabel-num {
+  font-family: inherit;
+  font-size: 10px;
+}
+.analytics .timing-crosshair {
+  stroke: var(--text-secondary);
+  stroke-width: 1;
+  opacity: 0.5;
+}

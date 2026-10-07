@@ -6,55 +6,15 @@ import { fileURLToPath } from 'node:url';
 import { JsonRpcProvider, Wallet, Contract, parseEther, formatEther } from 'ethers';
 import { defaultSecretsDir } from './_paths.js';
 
-export const LINK = {
-  base: '0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196',
-  'base-sepolia': '0xE4aB69C077896252FAFBD49EFD26B5D171A32410'
-};
-
-export const ERC20_ABI = [
-  'function balanceOf(address) view returns (uint256)',
-  'function decimals() view returns (uint8)',
-  'function symbol() view returns (string)',
-  'function transfer(address,uint256) returns (bool)'
-];
-
-// ---- BountyEscrow contract addresses (canonical, from Blockchain docs) ----
-
-export const ESCROW = {
-  'base': process.env.BOUNTY_ESCROW_ADDRESS_BASE || '0x2ae271f5e86bee449a36b943414b7c1a7b39772d',
-  'base-sepolia': process.env.BOUNTY_ESCROW_ADDRESS_BASE_SEPOLIA || '0xAA67686Bb09F569C2C3b663BB3679dD9f9F60BDC',
-};
-
-export const CHAIN_IDS = {
-  base: 8453,
-  'base-sepolia': 84532,
-};
-
-// ---- BountyEscrow ABI (subset needed by scripts) ----
-
-export const BOUNTY_ESCROW_ABI = [
-  // Events
-  'event BountyCreated(uint256 indexed bountyId, address indexed creator, string evaluationCid, uint64 classId, uint8 threshold, uint256 payoutWei, uint64 submissionDeadline)',
-  'event SubmissionPrepared(uint256 indexed bountyId, uint256 indexed submissionId, address indexed hunter, address evalWallet, string evaluationCid, uint256 ethMaxBudget)',
-  'event WorkSubmitted(uint256 indexed bountyId, uint256 indexed submissionId, bytes32 verdiktaAggId)',
-  'event SubmissionFinalized(uint256 indexed bountyId, uint256 indexed submissionId, uint8 status, uint256 acceptance)',
-  'event PayoutSent(uint256 indexed bountyId, address indexed winner, uint256 amount)',
-  // Write
-  'function createBounty(string evaluationCid, uint64 requestedClass, uint8 threshold, uint64 submissionDeadline, address targetHunter) payable returns (uint256)',
-  'function prepareSubmission(uint256 bountyId, string evaluationCid, string hunterCid, string addendum, uint256 alpha, uint256 maxOracleFee, uint256 estimatedBaseCost, uint256 maxFeeBasedScaling) returns (uint256 submissionId, address evalWallet, uint256 ethMaxBudget)',
-  'function startPreparedSubmission(uint256 bountyId, uint256 submissionId) payable',
-  'function finalizeSubmission(uint256 bountyId, uint256 submissionId)',
-  'function closeExpiredBounty(uint256 bountyId)',
-  'function failTimedOutSubmission(uint256 bountyId, uint256 submissionId)',
-  // Read
-  'function bountyCount() view returns (uint256)',
-  // getBounty returns Bounty memory (a struct) — must use tuple() for correct ABI decoding
-  'function getBounty(uint256 bountyId) view returns (tuple(address creator, string evaluationCid, uint64 requestedClass, uint8 threshold, uint256 payoutWei, uint256 createdAt, uint64 submissionDeadline, uint8 status, address winner, uint256 submissions))',
-  'function getSubmission(uint256 bountyId, uint256 submissionId) view returns (tuple(address hunter, string evaluationCid, string hunterCid, address evalWallet, bytes32 verdiktaAggId, uint8 status, uint256 acceptance, uint256 rejection, string justificationCids, uint256 submittedAt, uint256 finalizedAt, uint256 ethMaxBudget, uint256 maxOracleFee, uint256 alpha, uint256 estimatedBaseCost, uint256 maxFeeBasedScaling, string addendum))',
-  'function getEffectiveBountyStatus(uint256 bountyId) view returns (string)',
-  'function isAcceptingSubmissions(uint256 bountyId) view returns (bool)',
-  'function verdikta() view returns (address)',
-];
+// Generated escrow + lens ABI and reviewed deployment snapshots.
+import { abi, deployments } from './_transaction-guards.js';
+export { reviewedApiOrigin } from './_transaction-guards.js';
+import { walletPassword } from './_secret.js';
+import { execute, loadSpendPolicy } from './_executor.js';
+export { preflightDeployment, loadSpendPolicy } from './_executor.js';
+export const ESCROW = Object.fromEntries(Object.entries(deployments).map(([n,d]) => [n,d.address]));
+export const CHAIN_IDS = Object.fromEntries(Object.entries(deployments).map(([n,d]) => [n,d.chainId]));
+export const BOUNTY_ESCROW_ABI = abi;
 
 /**
  * Return a connected BountyEscrow Contract instance.
@@ -78,7 +38,9 @@ export function redactApiKey(key) {
 }
 
 export function getNetwork() {
-  return process.env.VERDIKTA_NETWORK || 'base';
+  const network = process.env.VERDIKTA_NETWORK;
+  if (!CHAIN_IDS[network]) throw new Error('Explicit VERDIKTA_NETWORK base or base-sepolia required');
+  return network;
 }
 
 export function expectedChainId(network = getNetwork()) {
@@ -104,29 +66,19 @@ export function resolvePath(p) {
   return path.isAbsolute(s) ? s : path.resolve(here, s);
 }
 
-export async function loadWallet() {
+export async function loadWallet({ password } = {}) {
   const keystorePathRaw = process.env.VERDIKTA_KEYSTORE_PATH;
-  const password = process.env.VERDIKTA_WALLET_PASSWORD;
-  if (!keystorePathRaw || !password) {
-    throw new Error(
-      'Set VERDIKTA_KEYSTORE_PATH and VERDIKTA_WALLET_PASSWORD. ' +
-      'To import an existing wallet, run: node wallet_init.js --import'
-    );
+  if (!keystorePathRaw) {
+    throw new Error('Set VERDIKTA_KEYSTORE_PATH (node onboard.js writes it). To import an existing wallet, run: node wallet_init.js --import');
   }
   const keystorePath = resolvePath(keystorePathRaw);
   const json = await fs.readFile(keystorePath, 'utf-8');
-  return Wallet.fromEncryptedJson(json, password);
+  // The password comes from the environment (a secret store) or a terminal prompt; never from a file.
+  return Wallet.fromEncryptedJson(json, password ?? await walletPassword());
 }
 
 export function providerFor(network) {
   return new JsonRpcProvider(getRpcUrl(network));
-}
-
-export async function linkBalance(network, provider, address) {
-  const linkAddr = LINK[network];
-  const link = new Contract(linkAddr, ERC20_ABI, provider);
-  const [bal, dec] = await Promise.all([link.balanceOf(address), link.decimals()]);
-  return { bal, dec, linkAddr };
 }
 
 export function parseEth(s) {
@@ -171,11 +123,10 @@ export function hasSpendConfirmationFlag() {
 }
 
 export async function confirmSpendOrExit(summary, { requiredText = 'YES' } = {}) {
-  if (hasSpendConfirmationFlag()) return;
-
   console.log('\nSPEND REVIEW');
   for (const line of summary) console.log(`  ${line}`);
 
+  if (hasSpendConfirmationFlag()) return;
   if (!process.stdin.isTTY) {
     console.error(`\nRefusing to continue without explicit spend authorization. Re-run with --yes or --confirm-spend after reviewing the operation.`);
     process.exit(1);
@@ -229,6 +180,13 @@ export async function getSupportedModelsForClass(baseUrl, apiKey, classId) {
  * Throws on any unsupported node.
  */
 export function validateAndNormalizeJuryNodes({ classId, juryNodes, supported }) {
+  if (!Array.isArray(juryNodes) || !juryNodes.length || juryNodes.some(n =>
+    !n || typeof n.provider !== 'string' || typeof n.model !== 'string' ||
+    !Number.isInteger(n.runs) || n.runs < 1 || n.runs > 10 ||
+    typeof n.weight !== 'number' || !Number.isFinite(n.weight) || n.weight < 0 || n.weight > 1) ||
+    Math.abs(juryNodes.reduce((sum, n) => sum + n.weight, 0) - 1) > 0.001) {
+    throw new Error('Invalid jury nodes: providers/models, runs 1–10 and normalized weights required');
+  }
   const allowed = new Set(supported.map(m => juryKey(m.provider, m.model)));
   const normalized = (juryNodes || []).map(n => ({ ...n, provider: normalizeProvider(n.provider) }));
 
@@ -251,109 +209,10 @@ export function validateAndNormalizeJuryNodes({ classId, juryNodes, supported })
   return normalized;
 }
 
-// ---- Transaction helper ----
-
-/**
- * Sign and broadcast a transaction, with dry-run gas estimation.
- * Exits the process on revert to prevent wasted gas.
- * @param {import('ethers').Signer} signer
- * @param {string} label - Human-readable label for logging
- * @param {object} txObj - Transaction object from API ({ to, data, value, gasLimit? })
- * @param {object} [opts]
- * @param {boolean} [opts.useApiGasLimit] - Use the gasLimit from txObj instead of estimating
- */
-function normalizeTxValue(v) {
-  if (v == null || v === '') return 0n;
-  return BigInt(v);
-}
-
-function requireHexData(data, label) {
-  if (data == null) return;
-  if (typeof data !== 'string' || !/^0x([0-9a-fA-F]{2})*$/.test(data)) {
-    throw new Error(`${label} transaction has invalid calldata`);
-  }
-}
-
-function sameAddress(a, b) {
-  return String(a || '').toLowerCase() === String(b || '').toLowerCase();
-}
-
-/**
- * Sign and broadcast a transaction, with recipient, chain, value, and calldata checks.
- * Exits the process on revert to prevent wasted gas.
- * @param {import('ethers').Signer} signer
- * @param {string} label - Human-readable label for logging
- * @param {object} txObj - Transaction object from API ({ to, data, value, gasLimit?, chainId? })
- * @param {object} [opts]
- * @param {boolean} [opts.useApiGasLimit] - Use the gasLimit from txObj instead of estimating
- * @param {string} [opts.network] - Expected Verdikta network
- * @param {string} [opts.expectedTo] - Required transaction recipient
- * @param {boolean} [opts.allowValue] - Allow nonzero ETH value
- * @param {bigint|string|number} [opts.maxValueWei] - Maximum allowed ETH value
- */
-export async function sendTx(
-  signer,
-  label,
-  txObj,
-  { useApiGasLimit = false, network = getNetwork(), expectedTo = null, allowValue = false, maxValueWei = null } = {}
-) {
-  console.log(`\n→ ${label}: sending transaction...`);
-
-  if (!txObj || typeof txObj !== 'object') {
-    throw new Error(`${label} transaction missing`);
-  }
-  if (!txObj.to) {
-    throw new Error(`${label} transaction missing recipient`);
-  }
-
-  const chainId = expectedChainId(network);
-  if (txObj.chainId != null && Number(txObj.chainId) !== chainId) {
-    throw new Error(`${label} transaction chainId mismatch: got ${txObj.chainId}, expected ${chainId} (${network})`);
-  }
-  if (expectedTo && !sameAddress(txObj.to, expectedTo)) {
-    throw new Error(`${label} transaction recipient mismatch: got ${txObj.to}, expected ${expectedTo}`);
-  }
-
-  requireHexData(txObj.data, label);
-  const valueWei = normalizeTxValue(txObj.value);
-  if (!allowValue && valueWei !== 0n) {
-    throw new Error(`${label} transaction unexpectedly includes ETH value ${formatEther(valueWei)} ETH`);
-  }
-  if (maxValueWei != null && valueWei > BigInt(maxValueWei)) {
-    throw new Error(`${label} transaction value ${formatEther(valueWei)} ETH exceeds limit ${formatEther(BigInt(maxValueWei))} ETH`);
-  }
-
-  const baseTx = {
-    to: txObj.to,
-    data: txObj.data,
-    value: valueWei,
-  };
-
-  console.log(`  chainId: ${chainId} (${network})`);
-  console.log(`  to:      ${baseTx.to}`);
-  console.log(`  value:   ${formatEther(valueWei)} ETH`);
-
-  let gasLimit;
-
-  if (useApiGasLimit && txObj.gasLimit) {
-    gasLimit = BigInt(txObj.gasLimit);
-    console.log(`  using API-recommended gasLimit: ${gasLimit.toString()}`);
-  } else {
-    try {
-      const estimated = await signer.estimateGas(baseTx);
-      gasLimit = (estimated * 120n) / 100n;
-      console.log(`  estimated gas: ${estimated.toString()} (limit: ${gasLimit.toString()})`);
-    } catch (err) {
-      const reason = err.reason || err.shortMessage || err.message || 'unknown';
-      console.error(`\n✖ ${label} will revert! Reason: ${reason}`);
-      if (err.data) console.error(`  revert data: ${err.data}`);
-      process.exit(1);
-    }
-  }
-
-  const tx = await signer.sendTransaction({ ...baseTx, gasLimit });
-  console.log(`  tx: ${tx.hash}`);
-  const receipt = await tx.wait();
-  console.log(`  confirmed in block ${receipt.blockNumber}`);
-  return receipt;
+// Every bounty write requires independently encoded arguments and owner policy.
+export async function sendTx(signer, label, txObj, opts = {}) {
+  return execute(signer, label, txObj, {
+    ...opts, policy: opts.policy || await loadSpendPolicy(),
+    dryRun: isDryRun(), confirm: confirmSpendOrExit,
+  });
 }

@@ -4,6 +4,7 @@
  */
 
 const { ethers } = require('ethers');
+const { bountyAmountWei, bountyAmountFields } = require('../utils/bountyAmounts');
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -12,14 +13,18 @@ const os = require('os');
 const fs = require('fs').promises;
 const AdmZip = require('adm-zip');
 const logger = require('../utils/logger');
+const { getEthPriceUsd } = require('../utils/ethPrice');
 const jobStorage = require('../utils/jobStorage');
 const { packageRubricHash } = require('../utils/rubricSource');
 const { config } = require('../config');
 const archiveGenerator = require('../utils/archiveGenerator');
-const { validateRubric, validateJuryNodes, isValidFileType, MAX_FILE_SIZE,
+const archiveShapeValidator = require('../utils/archiveShapeValidator');
+const { validateRubric, validateJuryNodes, normalizeBountyPayments, validateProcurement, isValidFileType, MAX_FILE_SIZE,
         oracleUnreadableReason, detectBinaryContainer, ALLOWED_ZIP_BASED_EXTENSIONS,
         parseFeeToWei, extractEvaluationWarnings } = require('../utils/validation');
+const { lookupClass, registryModelMatcher, checkJuryAgainstClass, checkClassCoverage } = require('../utils/classPolicy');
 const { getVerdiktaService, isVerdiktaServiceAvailable, LIKELY_MALFORMED_OUTCOME } = require('../utils/verdiktaService');
+
 const { validateBounty, IssueSeverity, IssueType, chainStatusIssue } = require('../utils/bountyValidator');
 const { getContractService, RESOLVE_GAS_LIMIT_FALLBACK, RESOLVE_GAS_NOTE } = require('../utils/contractService');
 const { sendError, ErrorCodes } = require('../utils/apiErrors');
@@ -125,7 +130,7 @@ function jobOracleSettings(job) {
  */
 function buildCreateBountyTx(job) {
   const oracle = jobOracleSettings(job);
-  const amountWei = ethers.parseEther(String(job.bountyAmount));
+  const amountWei = bountyAmountWei(job);
   const windowed = Number(job.creatorAssessmentWindowSize || 0) > 0 && job.creatorDeterminationPayment != null;
   const creatorPayWei = windowed ? ethers.parseEther(String(job.creatorDeterminationPayment)) : amountWei;
   const arbiterPayWei = windowed ? ethers.parseEther(String(job.arbiterDeterminationPayment)) : amountWei;
@@ -237,46 +242,6 @@ function stringifyErr(e) {
   return e.message || String(e);
 }
 
-function normalizeProviderName(provider) {
-  return String(provider || '').trim().toLowerCase();
-}
-
-function validateJuryModelsAgainstClass(juryNodes, classId, classMap) {
-  if (!classMap || typeof classMap.getClass !== 'function') {
-    return {
-      valid: false,
-      misconfiguration: true,
-      error: 'Class map unavailable for strict jury validation'
-    };
-  }
-
-  const classInfo = classMap.getClass(Number(classId));
-  if (!classInfo) {
-    return { valid: false, error: `Class ${classId} not found` };
-  }
-
-  if (classInfo.status !== 'ACTIVE') {
-    return { valid: false, error: `Class ${classId} is not ACTIVE (status=${classInfo.status})` };
-  }
-
-  const available = new Set((classInfo.models || []).map(m => `${normalizeProviderName(m.provider)}/${m.model}`));
-  const invalidNodes = [];
-
-  for (const node of juryNodes || []) {
-    const key = `${normalizeProviderName(node.provider)}/${node.model}`;
-    if (!available.has(key)) {
-      invalidNodes.push({ provider: node.provider, model: node.model });
-    }
-  }
-
-  return {
-    valid: invalidNodes.length === 0,
-    classInfo,
-    invalidNodes,
-    allowedModels: Array.from(available).sort()
-  };
-}
-
 // Direct, minimal JSON‑pin helper (Pinata). Expects RAW JWT in env; we add "Bearer ".
 const PIN_TIMEOUT_MS = Number(process.env.PIN_TIMEOUT_MS || 20000);
 function withTimeout(p, ms, label='operation') {
@@ -340,8 +305,6 @@ router.post('/create', async (req, res) => {
   logger.info('[jobs/create] incoming keys', { keys });
 
   try {
-    await ensureTmpBase();
-
     const {
       title,
       description,
@@ -397,12 +360,17 @@ router.post('/create', async (req, res) => {
     if (!/^0x[a-fA-F0-9]{40}$/.test(creator)) {
       return res.status(400).json({ error: 'Invalid creator address', details: 'Must be a valid Ethereum address' });
     }
-    if (targetHunter && !/^0x[a-fA-F0-9]{40}$/.test(targetHunter)) {
-      return res.status(400).json({ error: 'Invalid targetHunter address', details: 'Must be a valid Ethereum address' });
+    const procurementError = validateProcurement(req.body?.procurementMode, targetHunter);
+    if (procurementError) return res.status(400).json({ error: req.body?.procurementMode == null ? 'Invalid targetHunter address' : 'Invalid procurement intent', details: procurementError });
+    let payments;
+    try { payments = normalizeBountyPayments(req.body); }
+    catch (error) {
+      const label = error.code === 'INVALID_BOUNTY_WINDOW' ? 'Invalid bounty window'
+        : error.field === 'bountyAmount' && req.body?.procurementMode == null ? 'Invalid bountyAmount'
+        : 'Invalid bounty payment';
+      return res.status(400).json({ error: label, details: error.message });
     }
-    if (!Number.isFinite(Number(bountyAmount)) || Number(bountyAmount) <= 0) {
-      return res.status(400).json({ error: 'Invalid bountyAmount', details: 'Must be a positive number' });
-    }
+    const normalizedTarget = !targetHunter || ethers.getAddress(targetHunter) === ethers.ZeroAddress ? null : ethers.getAddress(targetHunter);
     if (!Number.isFinite(Number(threshold)) || Number(threshold) < 0 || Number(threshold) > 100) {
       return res.status(400).json({ error: 'Invalid threshold', details: 'Threshold must be between 0 and 100' });
     }
@@ -421,8 +389,21 @@ router.post('/create', async (req, res) => {
         details: 'rubricJson must be a JSON object, received a string. The request body is already JSON — do not pre-stringify the rubric. Pass it as a native object, e.g. "rubricJson": { "criteria": [...] }, not "rubricJson": "{\\"criteria\\":[...]}". To debug rubric shape without side effects, use POST /api/jobs/rubric/validate.'
       });
     }
-    // Validate jury configuration
-    const juryValidation = validateJuryNodes(juryNodes);
+    // ---- Class + jury (see utils/classPolicy.js) ----
+    // Classes are permissionless: a class outside the @verdikta/common registry is
+    // allowed with warnings. Refusals are limited to a jury the registry rules out
+    // for a listed class, and to a class no arbiter could serve.
+    const classIdNum = Number(classId);
+    if (!Number.isSafeInteger(classIdNum) || classIdNum < 0) {
+      return res.status(400).json({ error: 'Invalid classId', details: 'classId must be a non-negative integer' });
+    }
+    const { listed: classListed } = lookupClass(classIdNum);
+    // Model-id format is a typo heuristic: ids the registry lists exactly skip it, and
+    // for a class outside the registry its arbiter operators define the ids, so it only warns.
+    const juryValidation = validateJuryNodes(juryNodes, {
+      modelFormat: classListed === false ? 'warn' : 'error',
+      isRegistryModel: registryModelMatcher(classIdNum) || undefined
+    });
     if (!juryValidation.valid) {
       return res.status(400).json({
         error: 'Invalid jury configuration',
@@ -431,43 +412,46 @@ router.post('/create', async (req, res) => {
       });
     }
 
-    // Strict: each provider/model must be currently supported by @verdikta/common class map.
-    // Fail-open on infra errors (classMap can't load) — an unavailable dependency must not
-    // take down bounty creation. Fail-closed only on an actually-unsupported jury model.
-    let classMap = null;
-    try {
-      const common = require('@verdikta/common');
-      classMap = common?.classMap;
-      if (!classMap || typeof classMap.getClass !== 'function') {
-        throw new Error('Missing or invalid classMap export from @verdikta/common');
-      }
-    } catch (e) {
-      logger.warn('[jobs/create] classMap unavailable — skipping strict jury validation', { msg: e.message });
-      classMap = null;
+    const juryCheck = checkJuryAgainstClass(juryNodes, classIdNum);
+    if (juryCheck.errors.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid jury configuration',
+        details: juryCheck.invalidNodes.length > 0
+          ? 'One or more jury models are not supported for this class'
+          : juryCheck.errors[0],
+        classId: classIdNum,
+        invalidNodes: juryCheck.invalidNodes,
+        allowedModels: juryCheck.allowedModels || []
+      });
     }
 
-    if (classMap) {
-      const strictJuryCheck = validateJuryModelsAgainstClass(juryNodes, classId, classMap);
-      if (strictJuryCheck.misconfiguration) {
-        // classMap present but not usable for this check — treat as infra, fail-open.
-        logger.warn('[jobs/create] strict jury validation unavailable — skipping', {
-          classId: Number(classId),
-          details: strictJuryCheck.error
-        });
-      } else if (!strictJuryCheck.valid) {
-        return res.status(400).json({
-          error: 'Invalid jury configuration',
-          details: strictJuryCheck.error || 'One or more jury models are not supported for this class',
-          classId: Number(classId),
-          invalidNodes: strictJuryCheck.invalidNodes || [],
-          allowedModels: strictJuryCheck.allowedModels || []
-        });
-      }
+    const coverageCheck = await checkClassCoverage(classIdNum, oracleSettings, { creator });
+    if (coverageCheck.refusal) {
+      return res.status(400).json({
+        error: 'No arbiters can serve this class',
+        code: 'CLASS_UNSERVABLE',
+        details: coverageCheck.refusal,
+        classId: classIdNum,
+        coverage: coverageCheck.coverage
+      });
+    }
+
+    const classPolicy = {
+      classId: classIdNum,
+      listed: juryCheck.listed,
+      juryModelsVerified: juryCheck.juryModelsVerified,
+      coverage: coverageCheck.coverage,
+      warnings: [...juryValidation.warnings, ...juryCheck.warnings, ...coverageCheck.warnings]
+    };
+    if (classPolicy.warnings.length > 0) {
+      logger.info('[jobs/create] class warnings', { classId: classIdNum, listed: classPolicy.listed, warnings: classPolicy.warnings });
     }
 
     if (!rubricJson && !rubricCidIn) {
       return res.status(400).json({ error: 'Missing rubric', details: 'Provide rubricJson or rubricCid' });
     }
+
+    await ensureTmpBase();
 
     // ---- Resolve rubricCid ----
     let rubricCid;
@@ -618,7 +602,7 @@ router.post('/create', async (req, res) => {
             jobId: existing.jobId,
             title: existing.title,
             description: existing.description,
-            bountyAmount: existing.bountyAmount,
+            ...bountyAmountFields(existing),
             bountyAmountUSD: existing.bountyAmountUSD,
             threshold: existing.threshold,
             rubricCid: existing.rubricCid,
@@ -630,6 +614,7 @@ router.post('/create', async (req, res) => {
             oracleSettings: jobOracleSettings(existing)
           },
           onChain: buildCreateBountyTx(existing),
+          classPolicy,
           message: 'Reusing existing job (same evaluation package).'
         });
       }
@@ -638,7 +623,7 @@ router.post('/create', async (req, res) => {
     // ---- Times ----
     const now = Math.floor(Date.now() / 1000);
     const submissionOpenTime = now;
-    const submissionCloseTime = now + (Number(submissionWindowHours) * 3600);
+    const submissionCloseTime = now + payments.submissionWindowSeconds;
 
     // ---- Persist job ----
     const job = await jobStorage.createJob({
@@ -646,23 +631,18 @@ router.post('/create', async (req, res) => {
       description,
       workProductType,
       creator,
-      bountyAmount: Number(bountyAmount),
+      ...payments,
       bountyAmountUSD: Number(bountyAmountUSD || 0),
       threshold: Number(threshold),
       rubricCid,
       evaluationCid,
-      classId: Number(classId),
+      classId: classIdNum,
       juryNodes,
       iterations: Number(iterations),
       submissionOpenTime,
       submissionCloseTime,
-      targetHunter: targetHunter || null,
+      targetHunter: normalizedTarget,
       publicSubmissions: !!publicSubmissions,
-      ...(creatorDeterminationPayment != null ? {
-        creatorDeterminationPayment: String(creatorDeterminationPayment),
-        arbiterDeterminationPayment: String(arbiterDeterminationPayment),
-        creatorAssessmentWindowSize: Math.trunc(Number(creatorAssessmentWindowHours) * 3600),
-      } : {}),
       // Creator-chosen oracle request settings (wei strings + integers). Passed
       // verbatim into createBounty's `oracle` struct and used for every evaluation.
       oracleSettings,
@@ -677,6 +657,7 @@ router.post('/create', async (req, res) => {
         title: job.title,
         description: job.description,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         bountyAmountUSD: job.bountyAmountUSD,
         threshold: job.threshold,
         rubricCid: job.rubricCid,
@@ -689,6 +670,9 @@ router.post('/create', async (req, res) => {
       },
       // Exact createBounty(CreateParams) struct + calldata matching this record.
       onChain: buildCreateBountyTx(job),
+      // Registry status, live arbiter coverage, and anything the creator should
+      // know before funding (e.g. a class outside the registry).
+      classPolicy,
       message: 'Job created successfully! Now call createBounty on-chain (see onChain.transaction) and PATCH /api/jobs/:jobId/bountyId to link.'
     });
 
@@ -991,6 +975,7 @@ router.get('/admin/expired', async (req, res) => {
         title: job.title,
         creator: job.creator,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         deadline,
         expiredMinutesAgo: Math.floor((nowSeconds - deadline) / 60),
         localStatus: job.status,
@@ -1125,6 +1110,7 @@ router.get('/mine/action-required', async (req, res) => {
         jobId: job.jobId,
         title: job.title,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         deadline,
         expiredMinutesAgo: Math.floor((nowSeconds - deadline) / 60),
         canClose: false,
@@ -1342,8 +1328,9 @@ function buildLinkageReport(job, options = {}) {
       state: 'linked',
       onChain: true,
       syncedFromBlockchain: true,
-      detail: 'Sync service has confirmed this job matches an on-chain bounty with the same id.',
-      fix: null
+      detail: 'Sync service has confirmed this job matches an on-chain bounty with the same id.'
+      // No `fix` key: the field is optional (`fix?`) and is OMITTED — never null —
+      // when nothing needs doing, so strict clients can type it as `string | undefined`.
     };
   }
   if (job.onChain) {
@@ -1555,6 +1542,62 @@ router.post('/:jobId/close', async (req, res) => {
 // same for every submission. The legacy hunter-side fields (addendum, alpha,
 // maxOracleFee, estimatedBaseCost, maxFeeBasedScaling) are accepted and IGNORED for
 // one release; they are not forwarded anywhere.
+// Time allowed for the hunterCid shape check on the calldata routes. An archive
+// the server can't fetch doesn't block the caller, so there is no point waiting
+// out every gateway: Pinata usually answers in ~6s.
+const CALLDATA_SHAPE_CHECK_BUDGET_MS = 20000;
+
+/**
+ * Shape-check a caller-supplied hunterCid before handing out prepareSubmission
+ * calldata (#34). A malformed archive is refused with a 400, since the evaluation
+ * prepay would be wasted on it. An archive the server cannot FETCH is not refused:
+ * public gateways throttle this host, so a fetch failure says nothing about the
+ * archive. That caller gets the calldata plus an unverified warning.
+ *
+ * Returns null when it has already sent the 400; otherwise
+ * { archiveShape: 'ok' | 'unknown', warnings: [] }.
+ */
+async function gateHunterArchive(res, hunterCid, logLabel) {
+  const result = await archiveShapeValidator.fetchAndValidateArchiveShape(hunterCid, {
+    totalTimeoutMs: CALLDATA_SHAPE_CHECK_BUDGET_MS,
+  });
+  if (result.ok) return { archiveShape: 'ok', warnings: [] };
+
+  if (result.gatewayFailure) {
+    logger.warn(`[${logLabel}] hunterCid could not be fetched for the shape check; returning calldata unverified`, {
+      hunterCid, error: result.message
+    });
+    return {
+      archiveShape: 'unknown',
+      warnings: [{
+        code: 'HUNTER_CID_UNVERIFIED',
+        message: `The server could not fetch hunterCid to check its archive shape (${result.message}). The calldata is returned anyway, but the archive was NOT verified.`,
+        fix: 'If you pinned this archive yourself, make sure it matches conformingShape before broadcasting: a malformed archive gets DONT_FUND from the arbiters after the prepay is spent. Archives built by POST /submit always conform.',
+        conformingShape: archiveShapeValidator.CONFORMING_SHAPE_EXAMPLE
+      }]
+    };
+  }
+
+  if (result.check === 'cid-invalid') {
+    res.status(400).json({
+      success: false,
+      code: 'INVALID_HUNTER_CID',
+      error: 'hunterCid must be a bare IPFS CID: 46-100 alphanumeric characters, no path, comma, colon or whitespace (contract: "bad hunterCid")'
+    });
+    return null;
+  }
+
+  res.status(400).json({
+    success: false,
+    code: 'MALFORMED_HUNTER_CID',
+    error: `Submission archive failed shape check: ${result.check}`,
+    details: result.message,
+    conformingShape: archiveShapeValidator.CONFORMING_SHAPE_EXAMPLE,
+    fix: 'Use POST /:jobId/submit to build a conforming archive automatically, or match the shape shown in conformingShape.'
+  });
+  return null;
+}
+
 router.post('/:jobId/submit/prepare', async (req, res) => {
   const { jobId } = req.params;
 
@@ -1609,6 +1652,12 @@ router.post('/:jobId/submit/prepare', async (req, res) => {
       });
     }
 
+    // Shape-check the archive BEFORE spending the evaluation prepay on a
+    // doomed submission (see #34 — bounties 57/58/59 each pinned a
+    // differently-malformed archive and every arbiter aborted).
+    const archiveGate = await gateHunterArchive(res, hunterCid, 'submit/prepare');
+    if (!archiveGate) return;
+
     const iface = new ethers.Interface([
       'function prepareSubmission(uint256 bountyId, string evaluationCid, string hunterCid) returns (uint256 submissionId, address evalWallet, uint256 ethMaxBudget)'
     ]);
@@ -1636,6 +1685,8 @@ router.post('/:jobId/submit/prepare', async (req, res) => {
         // Creator-chosen; the contract applies these — hunters cannot change them.
         oracleSettings: jobOracleSettings(job)
       },
+      archiveShape: archiveGate.archiveShape,
+      ...(archiveGate.warnings.length ? { warnings: archiveGate.warnings } : {}),
       ...(ignoredFields.length ? { ignoredFields, ignoredFieldsNote: 'These hunter-side oracle fields are no longer part of prepareSubmission; the bounty creator set the oracle settings at createBounty.' } : {}),
       // Canonical topic0 + ABI for the event this tx emits — filter the receipt logs
       // on `event.topic0` and decode with `event.abi` rather than deriving either.
@@ -2051,7 +2102,7 @@ router.post('/:jobId/submissions/:submissionId/finalize', async (req, res) => {
 
     if (oracleResult) {
       response.oracleResult = oracleResult;
-      if (oracleResult.passed && job.bountyAmount) {
+      if (oracleResult.passed && Number(job.bountyAmount) > 0) {
         response.expectedPayout = job.bountyAmount;
       }
     }
@@ -2226,7 +2277,7 @@ router.delete('/admin/:jobId', async (req, res) => {
  * Body: { rubricJson: object }
  * Response: { valid: boolean, errors: string[] }
  */
-router.post('/rubric/validate', (req, res) => {
+router.post('/rubric/validate', async (req, res) => {
   const { rubricJson } = req.body || {};
 
   if (rubricJson === undefined || rubricJson === null) {
@@ -2265,53 +2316,60 @@ router.post('/rubric/validate', (req, res) => {
   const errors = [...rubricResult.errors];
   const { juryNodes, classId } = req.body || {};
   const tips = [];
+  const warnings = [];
   let allowedModels = null;
   let juryWasChecked = false;
+  let classListed;
+  let coverage;
 
   if (juryNodes !== undefined && juryNodes !== null) {
     juryWasChecked = true;
-    const juryResult = validateJuryNodes(juryNodes);
-    errors.push(...juryResult.errors);
-
     const classIdProvided = classId !== undefined && classId !== null;
     const classIdValid = typeof classId === 'number' && Number.isInteger(classId) && classId >= 0;
     if (classIdProvided && !classIdValid) {
       errors.push(`classId must be a non-negative integer (received ${typeof classId})`);
     }
+    // Same rule as /jobs/create: ids the registry lists exactly skip the model-id
+    // format heuristic, and for a class outside the registry it only warns.
+    if (classIdValid) classListed = lookupClass(classId).listed;
+    const juryResult = validateJuryNodes(juryNodes, {
+      modelFormat: classListed === false ? 'warn' : 'error',
+      isRegistryModel: (classIdValid && registryModelMatcher(classId)) || undefined
+    });
+    errors.push(...juryResult.errors);
+    warnings.push(...juryResult.warnings);
 
-    // Availability check (issue #16 follow-up): mirror the classMap gate that
-    // /jobs/create applies, so a clean bill here means the jury is create-safe —
-    // not merely well-formed. Requires a valid classId to know which class to
-    // check against. Fail-open on infra errors (classMap can't load), exactly
-    // like /jobs/create; only a genuinely unsupported model is a hard error.
+    // Availability check (issue #16 follow-up), the same class policy /jobs/create
+    // applies (utils/classPolicy.js), so a clean bill here means the jury and class
+    // are create-safe, not merely well-formed: registry classes get their jury
+    // checked against the registry; a class outside it passes with a warning; and
+    // any class with no arbiter able to serve it is an error.
     if (classIdValid) {
-      let classMap = null;
-      try {
-        classMap = require('@verdikta/common')?.classMap;
-        if (!classMap || typeof classMap.getClass !== 'function') {
-          throw new Error('Missing or invalid classMap export from @verdikta/common');
-        }
-      } catch (e) {
-        logger.warn('[rubric/validate] classMap unavailable — skipping availability check', { msg: e.message });
-        classMap = null;
+      const juryCheck = checkJuryAgainstClass(juryNodes, classId);
+      errors.push(...juryCheck.errors);
+      warnings.push(...juryCheck.warnings);
+      if (juryCheck.invalidNodes.length > 0) allowedModels = juryCheck.allowedModels;
+      if (juryCheck.listed === null) {
+        tips.push(`Could not load the class map to verify jury models against class ${classId}; /jobs/create performs this check at creation time.`);
       }
 
-      if (!classMap) {
-        tips.push(`Could not load the class map to verify jury models against class ${classId}; /jobs/create performs this check at creation time.`);
-      } else {
-        const strict = validateJuryModelsAgainstClass(juryNodes, classId, classMap);
-        if (strict.misconfiguration) {
-          tips.push(`Could not verify jury models against class ${classId}; /jobs/create performs this check at creation time.`);
-        } else if (!strict.valid) {
-          if (strict.invalidNodes && strict.invalidNodes.length) {
-            for (const n of strict.invalidNodes) {
-              errors.push(`Jury model ${n.provider}/${n.model} is not available in class ${classId}`);
-            }
-            allowedModels = strict.allowedModels || null;
-          } else if (strict.error) {
-            errors.push(strict.error);
-          }
-        }
+      // Coverage depends on the fee limit: only the caller's own oracle* fields can
+      // be their error; failing server defaults just skip the coverage check.
+      let oracleSettings = null;
+      try {
+        oracleSettings = resolveOracleSettings(req.body || {});
+      } catch (oracleErr) {
+        const body = req.body || {};
+        const callerSent = ['oracleMaxOracleFee', 'oracleAlpha', 'oracleEstimatedBaseCost', 'oracleMaxFeeBasedScaling']
+          .some(k => body[k] != null && body[k] !== '');
+        if (callerSent) errors.push(`Invalid oracle settings: ${oracleErr.message}`);
+        else logger.warn('[rubric/validate] default oracle settings unavailable — skipping coverage', { msg: oracleErr.message });
+      }
+      if (oracleSettings) {
+        const coverageCheck = await checkClassCoverage(classId, oracleSettings, { creator: req.body?.creator });
+        coverage = coverageCheck.coverage;
+        if (coverageCheck.refusal) errors.push(coverageCheck.refusal);
+        warnings.push(...coverageCheck.warnings);
       }
     } else if (!classIdProvided) {
       tips.push('Pass classId alongside juryNodes to also verify each jury model is supported by the class — without it, /rubric/validate only checks jury structure and /jobs/create may still reject unsupported models (issue #16).');
@@ -2327,6 +2385,9 @@ router.post('/rubric/validate', (req, res) => {
     errors,
     checkedAt: new Date().toISOString()
   };
+  if (warnings.length) body.warnings = warnings;
+  if (classListed !== undefined) body.classListed = classListed;
+  if (coverage) body.coverage = coverage;
   if (allowedModels) body.allowedModels = allowedModels;
   if (tips.length) body.tips = tips;
   return res.json(body);
@@ -2626,8 +2687,10 @@ router.get('/:jobId/validate', async (req, res) => {
  * ReputationKeeper via the aggregator. Never errors on a keeper read failure —
  * returns { available:false } so the UI can degrade gracefully.
  *
- * Response: { available, classId, oracleSettings, totalInClass, eligibleCount,
- *   distinctOwnersEligible, priceBoostEnabled, alphaExtreme, warnings[] , ... }
+ * Response: { available, classId, classListed, oracleSettings, totalInClass, eligibleCount,
+ *   distinctOwnersEligible, creatorOperatedCount, priceBoostEnabled, alphaExtreme, warnings[] , ... }
+ * classListed: whether the class is in the @verdikta/common registry (null if unreadable).
+ * creatorOperatedCount: eligible arbiters whose operator is owned by the bounty creator.
  */
 router.get('/:jobId/oracle-check', async (req, res) => {
   const { jobId } = req.params;
@@ -2635,12 +2698,14 @@ router.get('/:jobId/oracle-check', async (req, res) => {
     const job = await jobStorage.getJob(jobId);
     const oracleSettings = jobOracleSettings(job);
     const classId = Number(job.classId ?? 128);
+    const classListed = lookupClass(classId).listed;
 
     if (!isVerdiktaServiceAvailable()) {
       return res.json({
         available: false,
         jobId: job.jobId,
         classId,
+        classListed,
         oracleSettings,
         reason: 'Verdikta service not configured on this server',
         warnings: []
@@ -2649,13 +2714,18 @@ router.get('/:jobId/oracle-check', async (req, res) => {
 
     try {
       const result = await getVerdiktaService().getClassOracleEligibility(classId, oracleSettings);
-      return res.json({ success: true, jobId: job.jobId, ...result });
+      const creator = String(job.creator || '').toLowerCase();
+      const creatorOperatedCount = creator
+        ? (result.eligibleArbiters || []).filter(a => a.owner && String(a.owner).toLowerCase() === creator).length
+        : 0;
+      return res.json({ success: true, jobId: job.jobId, classListed, creatorOperatedCount, ...result });
     } catch (keeperErr) {
       logger.warn('[oracle-check] keeper read failed', { jobId, msg: keeperErr.message });
       return res.json({
         available: false,
         jobId: job.jobId,
         classId,
+        classListed,
         oracleSettings,
         reason: `Could not read the arbiter registry: ${keeperErr.message}`,
         warnings: []
@@ -2827,6 +2897,7 @@ router.get('/', async (req, res) => {
         description: job.description,
         workProductType: job.workProductType,
         bountyAmount: job.bountyAmount,
+        bountyAmountWei: job.bountyAmountWei,
         bountyAmountUSD: job.bountyAmountUSD,
         threshold: job.threshold,
         classId: job.classId,
@@ -3289,36 +3360,14 @@ router.get('/:jobId/task-spec', async (req, res) => {
 });
 
 // ==========================================================================
-// Utility: ETH price proxy (avoids client-side CORS issues with CoinGecko)
+// Utility: ETH price proxy (Coinbase spot, CoinGecko fallback; see utils/ethPrice).
 // Must be above /:jobId to avoid "eth-price" being matched as a job ID.
 // ==========================================================================
 
-let cachedEthPrice = { usd: 0, fetchedAt: 0 };
-const ETH_PRICE_CACHE_MS = 60000; // 1 minute
-
 router.get('/eth-price', async (req, res) => {
-  const now = Date.now();
-  if (cachedEthPrice.usd > 0 && (now - cachedEthPrice.fetchedAt) < ETH_PRICE_CACHE_MS) {
-    return res.json({ usd: cachedEthPrice.usd, cached: true });
-  }
-
-  try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd',
-      { signal: AbortSignal.timeout(5000) }
-    );
-    const data = await response.json();
-    const usd = data?.ethereum?.usd || 0;
-
-    if (usd > 0) {
-      cachedEthPrice = { usd, fetchedAt: now };
-    }
-
-    return res.json({ usd });
-  } catch (err) {
-    // Return stale cache if available, otherwise 0
-    return res.json({ usd: cachedEthPrice.usd || 0, stale: true });
-  }
+  // Response contract: { usd, source?, cached? } on success; { usd, stale: true, ... }
+  // when every source fails (usd is 0 if no price has been seen since startup).
+  return res.json(await getEthPriceUsd());
 });
 
 /* =================
@@ -3656,14 +3705,14 @@ router.get('/:jobId', async (req, res) => {
  * you at /lookup if it finds one.
  *
  * Returns a fresh on-chain snapshot of a bounty, with the server performing
- * the ABI decoding. Designed for AI agents that want to verify chain state
- * without writing their own raw-byte decoder (a common source of off-by-one
- * field offset bugs — decode via this endpoint instead).
+ * the ABI decoding. An optional convenience for AI agents: the contract is the
+ * source of truth and agents can make the same getBounty read themselves with
+ * any ABI-aware library. What this endpoint saves them is hand-written raw-byte
+ * decoding (a common source of off-by-one field offset bugs, since the tuple
+ * contains a dynamic string).
  *
  * One RPC call (getBounty); status/effectiveStatus/canBeClosed are derived
- * locally from the struct to avoid extra round trips. Use this instead of
- * hand-rolling eth_call decoders on the BountyEscrow.bounties() or
- * BountyEscrow.getBounty() tuple.
+ * locally from the struct to avoid extra round trips.
  *
  * Response shape:
  *   {
@@ -3672,8 +3721,10 @@ router.get('/:jobId', async (req, res) => {
  *     rawStatus: 0 | 1 | 2,                                // on-chain enum
  *     creator: "0x...",
  *     winner: "0x..." | null,
- *     payoutWei: string,                                   // still-escrowed ETH
+ *     payoutWei: string,                                   // still-escrowed ETH (0 once paid/refunded)
  *     payoutEth: string,                                   // human-readable
+ *     bountyAmountWei: string,                             // funded amount; constant for life
+ *     bountyAmount: string,                                // human-readable
  *     submissionDeadline: number,                          // unix seconds
  *     deadlinePassed: boolean,
  *     submissionCount: number,
@@ -3764,8 +3815,10 @@ router.get('/:jobId/onchain-status', async (req, res) => {
       rawStatus,                                 // 0=Open, 1=Awarded, 2=Closed (enum)
       creator: b.creator,
       winner: b.winner,
-      payoutWei: b.bountyAmountWei,
-      payoutEth: b.bountyAmount,
+      payoutWei: b.escrowWei,                    // live escrow: 0 once paid out or refunded
+      payoutEth: ethers.formatEther(b.escrowWei),
+      bountyAmountWei: b.bountyAmountWei,        // funded amount, unchanged by payout
+      bountyAmount: b.bountyAmount,
       submissionDeadline: deadline,
       deadlinePassed: deadline > 0 && now > deadline,
       submissionCount: b.submissionCount,
@@ -3784,7 +3837,7 @@ router.get('/:jobId/onchain-status', async (req, res) => {
                                                  //   linked | patched-not-synced |
                                                  //   not-on-chain | mismatch | untracked
       fetchedAt: new Date().toISOString(),
-      note: 'Ground truth from the BountyEscrow contract. If this disagrees with GET /api/jobs/:jobId the sync service has not yet observed the change; this endpoint is authoritative.'
+      note: 'Live read of the BountyEscrow contract, ABI-decoded server-side as a convenience. The contract itself is the source of truth: the same read can be made with any ABI-aware library and re-checked against it. If this disagrees with GET /api/jobs/:jobId the sync service has not yet observed the change; the live read wins.'
     });
   } catch (err) {
     const msg = (err?.message || '').toLowerCase();
@@ -4621,6 +4674,9 @@ router.post('/:jobId/submit', async (req, res) => {
  * Create the backend submission record AFTER on-chain prepareSubmission succeeds.
  * This prevents orphaned "Prepared" submissions when on-chain tx fails.
  */
+// Time allowed for /submissions/confirm's non-blocking archive shape check.
+const CONFIRM_SHAPE_CHECK_BUDGET_MS = 15000;
+
 router.post('/:jobId/submissions/confirm', async (req, res) => {
   try {
     const { jobId } = req.params;
@@ -4670,6 +4726,20 @@ router.post('/:jobId/submissions/confirm', async (req, res) => {
       return res.json({ success: true, submission: existingSubmission, alreadyExists: true });
     }
 
+    // Non-blocking: the on-chain submission already exists by the time /confirm
+    // is called, so a bad shape here can't be prevented — only flagged for the
+    // UI/hunter to see (see #34). /submit/prepare is the blocking check. Runs
+    // alongside the chain read below, on a short budget so the browser's 30s
+    // request timeout isn't hit; a gateway that can't deliver in time yields
+    // 'unknown', never 'malformed'.
+    const archiveShapePromise = archiveShapeValidator
+      .fetchAndValidateArchiveShape(hunterCid, { totalTimeoutMs: CONFIRM_SHAPE_CHECK_BUDGET_MS })
+      .then(archiveShapeValidator.archiveShapeLabel)
+      .catch((e) => {
+        logger.warn('[submissions/confirm] archive shape check threw', { jobId, submissionId, error: e.message });
+        return 'unknown';
+      });
+
     // Create the submission record with the on-chain submissionId.
     // Start with a conservative default of 'Prepared'; below we try to read
     // chain truth and overwrite with the real status. If the chain read
@@ -4680,6 +4750,7 @@ router.post('/:jobId/submissions/confirm', async (req, res) => {
       submissionId: Number(submissionId),
       hunter,
       hunterCid,
+      archiveShape: 'unknown',
       evalWallet: evalWallet || null,
       fileCount: fileCount || 0,
       files: files || [],
@@ -4767,6 +4838,13 @@ router.post('/:jobId/submissions/confirm', async (req, res) => {
       }
       logger.warn('[submissions/confirm] chain read failed, keeping skeleton (sync will heal later)', {
         jobId, submissionId, error: chainErr.message
+      });
+    }
+
+    submission.archiveShape = await archiveShapePromise;
+    if (submission.archiveShape.startsWith('malformed')) {
+      logger.warn('[submissions/confirm] hunter archive failed shape check', {
+        jobId, submissionId, hunterCid, archiveShape: submission.archiveShape
       });
     }
 
@@ -4994,6 +5072,16 @@ router.post('/:jobId/submit/bundle', async (req, res) => {
       });
     }
 
+    // A caller-supplied hunterCid gets the same shape check as /submit/prepare
+    // (#34). An archive built just above by createHunterSubmissionCIDArchive is
+    // conforming by construction, and a fresh pin may not have reached the
+    // gateways yet, so it is not re-fetched.
+    let archiveGate = { archiveShape: 'ok', warnings: [] };
+    if (hunterCidVerified === null) {
+      archiveGate = await gateHunterArchive(res, hunterCid, 'submit/bundle');
+      if (!archiveGate) return;
+    }
+
     // ---- Build transaction calldata ----
     const escrowAddress = config.bountyEscrowAddress;
     const chainId       = config.chainId;
@@ -5017,6 +5105,8 @@ router.post('/:jobId/submit/bundle', async (req, res) => {
       success: true,
       hunterCid,
       hunterCidVerified,
+      archiveShape: archiveGate.archiveShape,
+      ...(archiveGate.warnings.length ? { warnings: archiveGate.warnings } : {}),
       oracleSettings: bountyOracle,
       ...(ignoredFields.length ? { ignoredFields, ignoredFieldsNote: 'These hunter-side oracle fields are no longer part of prepareSubmission; the bounty creator set the oracle settings at createBounty. They were not forwarded.' } : {}),
       transactions: [
@@ -5368,7 +5458,8 @@ router.post('/:jobId/submit/bundle/complete', async (req, res) => {
 /* ===============================
    GET publicSubmissions sign-payload helper
    Returns the canonical message string that the bounty creator must sign
-   (via personal_sign / ethers signer.signMessage) to toggle the flag.
+   (via personal_sign / ethers signer.signMessage, or a smart account's
+   signMessage for EIP-1271 wallets) to toggle the flag.
    Removes the "build the message text by hand" foot-gun — the agent fetches
    the message, signs it with the creator wallet, then PATCHes back.
    =============================== */
@@ -5408,7 +5499,7 @@ router.get('/:jobId/public-submissions/sign-payload', async (req, res) => {
       timestamp,
       validForSeconds: 300,
       next: {
-        sign: 'Sign `message` verbatim with the bounty creator wallet (ethers: signer.signMessage(message); web3: personal_sign).',
+        sign: 'Sign `message` verbatim with the bounty creator wallet (ethers: signer.signMessage(message); web3: personal_sign). Smart-contract wallets (Coinbase Smart Wallet, Base Account, agent CDP smart accounts) sign with their own signMessage; the server verifies via EIP-1271 isValidSignature.',
         submit: `PATCH /api/jobs/${jobId}/public-submissions with { publicSubmissions: ${publicSubmissions}, message, signature }`
       }
     });
@@ -5421,7 +5512,8 @@ router.get('/:jobId/public-submissions/sign-payload', async (req, res) => {
 /* ===============================
    PATCH publicSubmissions (creator-signed, off-chain)
    Toggles the off-chain "publicSubmissions" flag on a bounty. Requires a
-   personal_sign message from the bounty creator. CIDs on the blockchain /
+   personal_sign message from the bounty creator — an EOA signature or an
+   EIP-1271 smart-wallet signature. CIDs on the blockchain /
    in API responses are public regardless — this flag only controls whether
    the website surfaces convenient preview/download buttons to non-creators.
    =============================== */
@@ -5446,7 +5538,11 @@ router.patch('/:jobId/public-submissions', async (req, res) => {
     const { verifyPublicSubmissionsAction } = require('../utils/messageAuth');
     let parsed;
     try {
-      parsed = verifyPublicSubmissionsAction({
+      // Async: EOA creators verify via ecrecover; smart-wallet creators
+      // (Coinbase Smart Wallet / Base Account / agent CDP wallets) verify via
+      // EIP-1271 isValidSignature on the creator contract. Any verifier
+      // failure — including RPC errors — lands here as a 401, never a 500.
+      parsed = await verifyPublicSubmissionsAction({
         message,
         signature,
         expectedSigner: job.creator,

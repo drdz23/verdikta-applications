@@ -15,14 +15,7 @@ const keepAliveAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 60_000
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
-  solidity: {
-    compilers: [
-      {
-        version: "0.8.23",
-        settings: { optimizer: { enabled: true, runs: 200 }, viaIR: true },
-      },
-    ],
-  },
+  solidity: { compilers: [require('./solidity.settings.cjs')] },
 
   networks: {
     development: {

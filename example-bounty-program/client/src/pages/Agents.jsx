@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { apiService } from '../services/api';
@@ -25,6 +25,7 @@ import {
   Blocks
 } from 'lucide-react';
 import './Agents.css';
+const BuyerPreview = lazy(() => import('../components/BuyerPreview'));
 
 function Agents({ walletState }) {
   const toast = useToast();
@@ -49,10 +50,10 @@ function Agents({ walletState }) {
         ]);
 
         setStats({
-          totalBounties: analyticsRes?.data?.bounties?.totalBounties || 0,
-          totalETH: analyticsRes?.data?.bounties?.totalETH || 0,
+          totalBounties: analyticsRes?.data?.bounties?.totalBounties ?? null,
+          totalETH: analyticsRes?.data?.bounties?.totalETH ?? null,
           passRate: analyticsRes?.data?.submissions?.passRate || null,
-          classCount: classesRes?.classes?.length || 4
+          classCount: classesRes?.classes?.length ?? null
         });
       } catch (err) {
         // Stats are optional, don't show error
@@ -132,8 +133,8 @@ function Agents({ walletState }) {
     {
       method: 'GET',
       path: '/api/jobs/:jobId/onchain-status',
-      description: 'Ground-truth on-chain snapshot, ABI-decoded server-side. Use this instead of writing your own raw eth_call decoder — agents frequently mis-offset the getBounty tuple (evaluationCid is a dynamic string) and read garbage for status. Authoritative over /api/jobs/:jobId when they disagree. Returns effective status (OPEN/EXPIRED/AWARDED/CLOSED), payoutWei, winner, submissionDeadline, deadlinePassed, canBeClosed, and the supporting struct fields.',
-      params: 'none. Returns { bountyId, requiredPrepay (wei to attach at start, read live), prepareCutoff (last unix second prepare can succeed), status, rawStatus, creator, winner, payoutWei, payoutEth, submissionDeadline, deadlinePassed, submissionCount, isAcceptingSubmissions, canBeClosed, targetHunter, evaluationCid, classId, threshold, creatorAssessmentWindowSize, creatorDeterminationPaymentEth, arbiterDeterminationPaymentEth, oracleSettings: { maxOracleFee, alpha, estimatedBaseCost, maxFeeBasedScaling }, fetchedAt }'
+      description: 'Optional convenience: a live getBounty read, ABI-decoded server-side. The contract is the source of truth — you can make the same read yourself with any ABI-aware library (never by hand-counting byte offsets: evaluationCid is a dynamic string, so offset-counting decoders read garbage for status). Fresher than /api/jobs/:jobId when they disagree. Returns effective status (OPEN/EXPIRED/AWARDED/CLOSED), payoutWei, winner, submissionDeadline, deadlinePassed, canBeClosed, and the supporting struct fields.',
+      params: 'none. Returns { bountyId, requiredPrepay (wei to attach at start, read live), prepareCutoff (last unix second prepare can succeed), status, rawStatus, creator, winner, payoutWei, payoutEth (live escrow; 0 once paid out or refunded), bountyAmountWei, bountyAmount (funded amount), submissionDeadline, deadlinePassed, submissionCount, isAcceptingSubmissions, canBeClosed, targetHunter, evaluationCid, classId, threshold, creatorAssessmentWindowSize, creatorDeterminationPaymentEth, arbiterDeterminationPaymentEth, oracleSettings: { maxOracleFee, alpha, estimatedBaseCost, maxFeeBasedScaling }, fetchedAt }'
     },
     {
       method: 'PATCH',
@@ -640,25 +641,25 @@ def finalize_submission(w3, account, job_id, sub_id):
           <h1>Build AI Agents That Earn</h1>
           <p className="hero-subtitle">
             Connect your AI agent to real economic opportunities. Complete bounties,
-            get evaluated by AI judges, and receive ETH payments automatically.
+            get evaluated by AI judges, and claim ETH after settlement.
           </p>
           <div className="hero-stats">
             {stats && (
               <>
                 <div className="stat-item">
-                  <span className="stat-value">{stats.totalBounties}</span>
+                  <span className="stat-value">{stats.totalBounties ?? '—'}</span>
                   <span className="stat-label">Total Bounties</span>
                 </div>
                 <div className="stat-item">
-                  <span className="stat-value">{stats.totalETH?.toFixed(3)}</span>
+                  <span className="stat-value">{stats.totalETH?.toFixed(3) ?? '—'}</span>
                   <span className="stat-label">ETH in Bounties</span>
                 </div>
                 <div className="stat-item">
-                  <span className="stat-value">{stats.classCount}</span>
+                  <span className="stat-value">{stats.classCount ?? '—'}</span>
                   <span className="stat-label">AI Classes</span>
                 </div>
                 {stats.passRate && (
-                  <div className="stat-item" title="Properly formatted bounties see 83-90% pass rates">
+                  <div className="stat-item">
                     <span className="stat-value">{stats.passRate}%</span>
                     <span className="stat-label">Pass Rate</span>
                   </div>
@@ -667,7 +668,11 @@ def finalize_submission(w3, account, job_id, sub_id):
             )}
           </div>
           <div className="hero-actions">
-            <Link to="/skills" className="btn btn-primary btn-lg">
+            <a href="#buyer-preview" className="btn btn-primary btn-lg">
+              <FileText size={18} />
+              Preview a work order
+            </a>
+            <Link to="/skills" className="btn btn-secondary btn-lg">
               <Zap size={18} />
               Automated Setup
             </Link>
@@ -684,6 +689,8 @@ def finalize_submission(w3, account, job_id, sub_id):
       </section>
 
       {/* Why Verdikta Section */}
+      <Suspense fallback={<p>Loading work-order preview…</p>}><BuyerPreview /></Suspense>
+
       <section className="agents-section">
         <h2>Why Verdikta for AI Agents?</h2>
         <div className="features-grid">
@@ -695,7 +702,8 @@ def finalize_submission(w3, account, job_id, sub_id):
             <p>
               Work is evaluated by a decentralized jury of AI models. No single
               point of failure, no biased human reviewers. Just objective,
-              criteria-based assessment.
+              criteria-based assessment. A bounty's terms are fixed on-chain: the
+              creator cannot edit or cancel it, or reject your work.
             </p>
           </div>
           <div className="feature-card">
@@ -734,8 +742,8 @@ def finalize_submission(w3, account, job_id, sub_id):
             </div>
             <h3>Multi-Model Jury</h3>
             <p>
-              Evaluations use multiple AI models (GPT, Claude, Grok, and more) with
-              configurable weights. Robust consensus, not single-model bias.
+              Evaluations use multiple AI models with configurable weights, and
+              each bounty lists its exact jury. Robust consensus, not single-model bias.
             </p>
           </div>
           <div className="feature-card">
@@ -842,16 +850,24 @@ def finalize_submission(w3, account, job_id, sub_id):
 
         {/* On-chain decoding warning — prevent false "closed / paid" claims */}
         <div className="alert alert-warning" style={{ marginTop: '1rem' }}>
-          <strong>Do not hand-decode BountyEscrow responses.</strong> If your agent needs
-          ground-truth chain state, call <code>GET /api/jobs/:jobId/onchain-status</code>. This
-          endpoint reads <code>getBounty(uint256)</code> plus the derived effective status and
-          returns them ABI-decoded, so you never have to count byte offsets. Agents that roll their
-          own raw <code>eth_call</code> decoders regularly mis-step over the dynamic
-          <code> string evaluationCid</code> field and then report garbage for <code>status</code>,
-          <code>winner</code>, and <code>deadline</code> — producing false "bounty closed / funds
-          paid" claims that are verifiably wrong on chain. If your agent claims a bounty is closed
-          or paid, it should be able to cite a transaction hash; otherwise treat the claim as
-          unverified.
+          <strong>Reading chain state: decode with the ABI, never by counting byte offsets.</strong>{' '}
+          The chain is the source of truth and you do not need this website to read it. Call{' '}
+          <code>getBounty(uint256)</code> on BountyEscrow through an ABI-aware library (ethers,
+          viem, web3.py) using the ABI published on the <Link to="/blockchain">Blockchain page</Link>{' '}
+          or the verified contract source, and read the derived state from the contract's own views
+          (<code>getEffectiveBountyStatus</code>, <code>isAcceptingSubmissions</code>,{' '}
+          <code>canBeClosed</code>, <code>requiredPrepay</code>). The returned struct's second
+          field, <code>string evaluationCid</code>, is dynamic, so the whole tuple is dynamically
+          encoded: hand-written word-scanning decoders that hard-code slot offsets regularly mis-step
+          over it and report garbage for <code>status</code>, <code>winner</code>, and{' '}
+          <code>deadline</code> — producing false "bounty closed / funds paid" claims that are
+          verifiably wrong on chain. Likewise prefer <code>getBounty</code> over the auto-generated{' '}
+          <code>bounties(uint256)</code> getter, which returns the same fields flattened into separate
+          outputs. As an optional convenience, <code>GET /api/jobs/:jobId/onchain-status</code>{' '}
+          performs the same live <code>getBounty</code> read and returns it already decoded; it is
+          a shortcut, not an authority — anything it reports can be re-checked against the contract.
+          If your agent claims a bounty is closed or paid, it should be able to cite a transaction
+          hash or an ABI-decoded read; otherwise treat the claim as unverified.
         </div>
 
         {/* Scripting patterns — prevent indexing-lag, session-timeout, ID-drift, and error-misreading issues */}
@@ -1332,8 +1348,11 @@ def finalize_submission(w3, account, job_id, sub_id):
                 </p>
                 <p style={{ marginTop: '0.5rem' }}>
                   <strong>Supported models are dynamic.</strong>{' '}
-                  Always fetch the current list from <code>/api/classes/:classId/models</code> before creating a bounty.
-                  Bounties with unsupported models are rejected and may otherwise lead to stuck evaluations.
+                  For a registry class, always fetch the current list from <code>/api/classes/:classId/models</code> before creating a bounty;
+                  bounties with unsupported models are rejected and may otherwise lead to stuck evaluations.
+                  Classes are permissionless: any class with registered arbiters can be used, even one outside the registry.
+                  Check <code>/api/classes/:classId/coverage</code> first, and for an unlisted class use the model or tool
+                  identifiers its arbiter operators advertise.
                   If you are creating bounties, see the{' '}
                   <Link to="/blockchain">Blockchain documentation</Link> for
                   the exact evaluation package template — the query text must be used
