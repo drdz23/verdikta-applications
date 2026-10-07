@@ -158,51 +158,88 @@ beforeEach(() => {
 
 describe('GET /:jobId/submissions/:submissionId/diagnose — issue #40 zero-commit detection', () => {
   const JOBID = 100;
-
-  it('labels a settled zero-commit round LIKELY MALFORMED and points nextAction at /validate', async () => {
-    setStorage(makeJob({ jobId: JOBID }));
-    mockGetAggHistory.mockResolvedValue({
-      found: true,
-      outcome: LIKELY_MALFORMED_OUTCOME,
-      analysis: { totalSlots: 6, committed: 0 },
-    });
-
+  const zeroCommitRound = () => mockGetAggHistory.mockResolvedValue({
+    found: true,
+    outcome: LIKELY_MALFORMED_OUTCOME,
+    analysis: { totalSlots: 6, committed: 0 },
+  });
+  const diagnose = async () => {
     const res = await request(buildApp()).get(`/jobs/${JOBID}/submissions/0/diagnose`);
     expect(res.status).toBe(200);
-    const { diagnosis } = res.body;
+    return res.body.diagnosis;
+  };
 
-    expect(diagnosis.checks.aggHistory).toBeDefined();
+  it('flags a settled zero-commit round but keeps the contract nextAction and the /timeout step', async () => {
+    setStorage(makeJob({ jobId: JOBID }));
+    zeroCommitRound();
+
+    const diagnosis = await diagnose();
+
     expect(diagnosis.checks.aggHistory.outcome).toBe(LIKELY_MALFORMED_OUTCOME);
     expect(diagnosis.checks.aggHistory.likelyMalformed).toBe(true);
-    expect(diagnosis.issues.some((i) => i.includes(LIKELY_MALFORMED_OUTCOME))).toBe(true);
-    // The contract said FORCE_FAIL, but the diagnosed root cause overrides it.
-    expect(diagnosis.nextAction).toBe(`GET /api/jobs/${JOBID}/validate`);
+    expect(diagnosis.issues.some((i) => i.includes('No arbiter committed (0 of 6 polled slots)'))).toBe(true);
+    // Force-failing is the only way to refund the prepay, so nothing may hide it.
+    expect(diagnosis.nextAction).toBe('FORCE_FAIL');
+    expect(diagnosis.recommendations.some((r) => r.includes('/timeout'))).toBe(true);
   });
 
-  it('includes the bountyValidator failure directly when the package is malformed', async () => {
+  it('points at the oracle side, not the package, when the package validates clean', async () => {
     setStorage(makeJob({ jobId: JOBID }));
-    mockGetAggHistory.mockResolvedValue({
-      found: true,
-      outcome: LIKELY_MALFORMED_OUTCOME,
-      analysis: { totalSlots: 6, committed: 0 },
-    });
+    zeroCommitRound();
+
+    const diagnosis = await diagnose();
+
+    expect(diagnosis.checks.packageValidation.valid).toBe(true);
+    expect(diagnosis.issues.some((i) => i.includes('passes validation') && i.includes('oracle side'))).toBe(true);
+    expect(diagnosis.issues.some((i) => i.includes('fails validation'))).toBe(false);
+  });
+
+  it('lists the package errors (not warnings) when the package fails validation', async () => {
+    setStorage(makeJob({ jobId: JOBID }));
+    zeroCommitRound();
     mockValidateBounty.mockResolvedValue({
       valid: false,
       issues: [
-        {
-          type: 'INVALID_PRIMARY_QUERY',
-          severity: 'error',
-          message: 'primary_query.json query exceeds the maximum allowed length',
-        },
+        { type: 'INVALID_PRIMARY_QUERY', severity: 'error', message: 'primary_query.json missing required "query" field' },
+        { type: 'MISSING_BCIDS', severity: 'warning', message: 'manifest.json missing "bCIDs" object' },
       ],
     });
 
-    const res = await request(buildApp()).get(`/jobs/${JOBID}/submissions/0/diagnose`);
-    expect(res.status).toBe(200);
-    const { diagnosis } = res.body;
+    const diagnosis = await diagnose();
 
     expect(diagnosis.checks.packageValidation.valid).toBe(false);
-    expect(diagnosis.issues.some((i) => i.includes('exceeds the maximum allowed length'))).toBe(true);
+    expect(diagnosis.issues.some((i) => i.includes('fails validation'))).toBe(true);
+    expect(diagnosis.issues.some((i) => i.includes('missing required "query" field'))).toBe(true);
+    expect(diagnosis.issues.some((i) => i.includes('bCIDs'))).toBe(false);
+    expect(diagnosis.recommendations.some((r) => r.includes('Do not resubmit'))).toBe(true);
+    expect(diagnosis.nextAction).toBe('FORCE_FAIL');
+  });
+
+  it('reports a package it could not fetch as unverified, not as malformed', async () => {
+    setStorage(makeJob({ jobId: JOBID }));
+    zeroCommitRound();
+    mockValidateBounty.mockResolvedValue({
+      valid: false,
+      issues: [{ type: 'CID_INACCESSIBLE', severity: 'error', message: 'Cannot fetch evaluation package from IPFS: HTTP error! status: 429' }],
+    });
+
+    const diagnosis = await diagnose();
+
+    expect(diagnosis.checks.packageValidation.unverifiable).toBe(true);
+    expect(diagnosis.issues.some((i) => i.includes('could not be fetched'))).toBe(true);
+    expect(diagnosis.issues.some((i) => i.includes('fails validation'))).toBe(false);
+    expect(diagnosis.issues.some((i) => i.startsWith('Evaluation package:'))).toBe(false);
+  });
+
+  it('does not scan the aggregator while the round is still open', async () => {
+    setStorage(makeJob({ jobId: JOBID }));
+    mockGetForceFailEligibility.mockResolvedValue({ eligible: false, timeoutAt: NOW() + 120 });
+    mockNextAction.mockResolvedValue('AWAIT_ORACLE');
+
+    const diagnosis = await diagnose();
+
+    expect(mockGetAggHistory).not.toHaveBeenCalled();
+    expect(diagnosis.checks.aggHistory).toBeUndefined();
   });
 
   it('does not flag a normal non-responding-node failure as malformed', async () => {
@@ -213,12 +250,11 @@ describe('GET /:jobId/submissions/:submissionId/diagnose — issue #40 zero-comm
       analysis: { totalSlots: 6, committed: 3 },
     });
 
-    const res = await request(buildApp()).get(`/jobs/${JOBID}/submissions/0/diagnose`);
-    expect(res.status).toBe(200);
-    const { diagnosis } = res.body;
+    const diagnosis = await diagnose();
 
     expect(diagnosis.checks.aggHistory).toBeUndefined();
-    expect(diagnosis.issues.some((i) => i.includes(LIKELY_MALFORMED_OUTCOME))).toBe(false);
+    expect(diagnosis.issues.some((i) => i.includes('No arbiter committed'))).toBe(false);
     expect(diagnosis.nextAction).toBe('FORCE_FAIL');
+    expect(diagnosis.recommendations.some((r) => r.includes('/timeout'))).toBe(true);
   });
 });

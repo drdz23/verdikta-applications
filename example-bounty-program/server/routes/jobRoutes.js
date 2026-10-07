@@ -6654,6 +6654,31 @@ async function probeCidAccessibility(cid, perGatewayTimeoutMs = 10000) {
  * Deep diagnostic for stuck submissions - checks on-chain state, CID accessibility, and Verdikta status.
  * Helps identify why a submission is stuck or why timeout is reverting.
  */
+// Run bountyValidator for /diagnose. A package that could not be fetched is
+// reported as unverifiable rather than as a package fault. Returns null when no
+// IPFS client is configured or the validator throws.
+async function diagnosePackage(job, req) {
+  const ipfsClient = req.app.locals.ipfsClient;
+  if (!ipfsClient) return null;
+  let classMap;
+  try {
+    classMap = require('@verdikta/common').classMap;
+  } catch (e) {
+    logger.warn('Could not load classMap for validation:', e.message);
+  }
+  try {
+    const result = await validateBounty({ evaluationCid: job.evaluationCid, classId: job.classId, ipfsClient, classMap });
+    const fetchFailure = result.issues.find(i =>
+      i.type === IssueType.CID_INACCESSIBLE ||
+      (i.type === IssueType.MISSING_RUBRIC && /^Cannot fetch/.test(i.message))
+    );
+    return fetchFailure ? { ...result, unverifiable: true, unverifiableReason: fetchFailure.message } : result;
+  } catch (e) {
+    logger.warn('[diagnose] validateBounty failed', { jobId: job.jobId, msg: e.message });
+    return null;
+  }
+}
+
 router.get('/:jobId/submissions/:submissionId/diagnose', async (req, res) => {
   const { jobId, submissionId } = req.params;
 
@@ -6780,11 +6805,15 @@ router.get('/:jobId/submissions/:submissionId/diagnose', async (req, res) => {
               } else {
                 diagnosis.checks.oracleResult = { complete: false };
 
-                // Zero commits from every polled slot on a settled round points at the
-                // evaluation package, not the oracle network (mirrors example-arbiters'
-                // getAggHistory/getOracleHealth "likely malformed" rule).
+                // A settled round (force-fail callable) in which no polled slot committed
+                // often means the evaluation package is unusable (mirrors example-arbiters'
+                // getAggHistory/getOracleHealth "likely malformed" rule). It can also be a
+                // jury model the arbiters don't serve or no live operator for the class, so
+                // the package is checked before blaming it. Only settled rounds are
+                // inspected: getAggHistory is an archive log scan, and agents poll
+                // /diagnose throughout an evaluation.
                 let aggHistory = null;
-                if (isVerdiktaServiceAvailable()) {
+                if (timeoutEligible && isVerdiktaServiceAvailable()) {
                   try {
                     aggHistory = await getVerdiktaService().getAggHistory(chainSub.verdiktaAggId);
                   } catch (aggHistErr) {
@@ -6792,51 +6821,47 @@ router.get('/:jobId/submissions/:submissionId/diagnose', async (req, res) => {
                   }
                 }
 
-                if (aggHistory?.found && aggHistory.outcome === LIKELY_MALFORMED_OUTCOME) {
-                  diagnosis.checks.aggHistory = {
-                    outcome: aggHistory.outcome,
-                    totalSlots: aggHistory.analysis.totalSlots,
-                    committed: aggHistory.analysis.committed,
-                    likelyMalformed: true
-                  };
-                  diagnosis.issues.push(
-                    `${aggHistory.outcome} — none of the ${aggHistory.analysis.totalSlots} polled oracle slots committed. ` +
-                    `This points to the evaluation package, not the oracle network.`
-                  );
-
-                  // Surface the package-level failure directly instead of making the
-                  // caller chase GET /:jobId/validate separately.
-                  try {
-                    const ipfsClient = req.app.locals.ipfsClient;
-                    if (ipfsClient) {
-                      let classMap;
-                      try {
-                        classMap = require('@verdikta/common').classMap;
-                      } catch (e) {
-                        logger.warn('Could not load classMap for validation:', e.message);
-                      }
-                      const packageCheck = await validateBounty({
-                        evaluationCid: job.evaluationCid,
-                        classId: job.classId,
-                        ipfsClient,
-                        classMap
-                      });
-                      diagnosis.checks.packageValidation = packageCheck;
-                      if (!packageCheck.valid) {
-                        for (const issue of packageCheck.issues) {
-                          diagnosis.issues.push(`Evaluation package: ${issue.message}`);
-                        }
-                      }
-                    }
-                  } catch (validateErr) {
-                    logger.warn('[diagnose] validateBounty failed', { jobId, submissionId, msg: validateErr.message });
-                  }
-
-                  diagnosis.recommendations.push(`Validate the evaluation package: GET /api/jobs/${jobId}/validate`);
-                } else if (timeoutEligible) {
+                if (timeoutEligible) {
+                  // Force-failing is still the only way to refund the unspent prepay and
+                  // unblock closeExpiredBounty, whatever caused the round to fail.
                   diagnosis.recommendations.push(
                     `Oracle round settled with no result — call POST /api/jobs/${jobId}/submissions/${subId}/timeout (or failTimedOutSubmission on-chain) to force-fail and refund the prepay.`
                   );
+
+                  if (aggHistory?.found && aggHistory.outcome === LIKELY_MALFORMED_OUTCOME) {
+                    const totalSlots = aggHistory.analysis.totalSlots;
+                    diagnosis.checks.aggHistory = {
+                      outcome: aggHistory.outcome,
+                      totalSlots,
+                      committed: aggHistory.analysis.committed,
+                      likelyMalformed: true
+                    };
+                    const packageCheck = await diagnosePackage(job, req);
+                    diagnosis.checks.packageValidation = packageCheck;
+                    const noCommits = `No arbiter committed (0 of ${totalSlots} polled slots).`;
+
+                    if (packageCheck?.unverifiable) {
+                      diagnosis.issues.push(
+                        `${noCommits} This often means the evaluation package is malformed, but the package could not be fetched to check it (${packageCheck.unverifiableReason}).`
+                      );
+                      diagnosis.recommendations.push(`Check the evaluation package: GET /api/jobs/${jobId}/validate`);
+                    } else if (packageCheck && !packageCheck.valid) {
+                      diagnosis.issues.push(`${noCommits} The evaluation package fails validation, the likely cause:`);
+                      for (const issue of packageCheck.issues.filter(i => i.severity === IssueSeverity.ERROR)) {
+                        diagnosis.issues.push(`Evaluation package: ${issue.message}`);
+                      }
+                      diagnosis.recommendations.push(
+                        `Do not resubmit to this bounty until the package problem is resolved: every round will fail the same way. Details: GET /api/jobs/${jobId}/validate`
+                      );
+                    } else if (packageCheck) {
+                      diagnosis.issues.push(
+                        `${noCommits} The evaluation package passes validation, so the cause is more likely on the oracle side: a jury model the arbiters don't serve, or no live operator for class ${job.classId}.`
+                      );
+                    } else {
+                      diagnosis.issues.push(`${noCommits} This often means the evaluation package is malformed.`);
+                      diagnosis.recommendations.push(`Check the evaluation package: GET /api/jobs/${jobId}/validate`);
+                    }
+                  }
                 } else if (timeoutAt) {
                   diagnosis.recommendations.push(
                     `Oracle not yet complete and the aggregator round is still open. Force-fail becomes callable at ${new Date(timeoutAt * 1000).toISOString()} ` +
@@ -6968,13 +6993,6 @@ router.get('/:jobId/submissions/:submissionId/diagnose', async (req, res) => {
 
       diagnosis.nextAction = null;
 
-    }
-
-    // A likely-malformed round overrides the contract's own suggestion (e.g.
-    // FORCE_FAIL): the actionable next step is to inspect the package, not
-    // resolve the on-chain submission.
-    if (diagnosis.checks.aggHistory?.likelyMalformed) {
-      diagnosis.nextAction = `GET /api/jobs/${jobId}/validate`;
     }
 
     return res.json({ success: true, diagnosis });

@@ -1009,8 +1009,10 @@ class VerdiktaService {
     } else if (elapsedMinutes === null) {
       // No request event and no timestamp — can't place it in time.
       outcome = 'RUNNING';
-    } else if (committedSlots.length === 0) {
-      // No arbiter committed at all: the request itself was most likely unusable.
+    } else if (totalSlots > 0 && committedSlots.length === 0) {
+      // Oracles were selected but none committed: the request itself was most
+      // likely unusable. With no selected slots at all, the event scan found
+      // nothing to judge, so it falls through to the generic failure label.
       outcome = LIKELY_MALFORMED_OUTCOME;
     } else {
       // Past the window with no FulfillAIEvaluation → it failed / timed out.
